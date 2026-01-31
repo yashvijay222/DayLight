@@ -1,0 +1,44 @@
+from collections import defaultdict
+from datetime import datetime
+
+from fastapi import APIRouter, Request
+
+from app.models import BudgetStatus
+from app.services.cognitive_calculator import (
+    DAILY_BUDGET,
+    calculate_event_cost,
+    detect_overdraft,
+)
+
+router = APIRouter()
+
+
+@router.get("/budget/daily", response_model=BudgetStatus)
+def get_daily_budget(request: Request) -> BudgetStatus:
+    events = request.app.state.events
+    today = datetime.utcnow().date()
+    daily_events = [e for e in events if e.start_time.date() == today]
+    total = sum(calculate_event_cost(e) for e in daily_events)
+    is_overdrafted, overdraft_amount, remaining = detect_overdraft(total, DAILY_BUDGET)
+    weekly_total = sum(calculate_event_cost(e) for e in events)
+    weekly_debt = weekly_total - (DAILY_BUDGET * 7)
+    return BudgetStatus(
+        daily_budget=DAILY_BUDGET,
+        spent=total,
+        remaining=remaining,
+        is_overdrafted=is_overdrafted,
+        overdraft_amount=overdraft_amount,
+        weekly_total=weekly_total,
+        weekly_debt=weekly_debt,
+    )
+
+
+@router.get("/budget/weekly")
+def get_weekly_budget(request: Request) -> dict:
+    events = request.app.state.events
+    totals = defaultdict(int)
+    for event in events:
+        day_key = event.start_time.strftime("%Y-%m-%d")
+        totals[day_key] += calculate_event_cost(event)
+    weekly_total = sum(totals.values())
+    return {"daily_totals": dict(totals), "weekly_total": weekly_total}
