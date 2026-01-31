@@ -51,7 +51,7 @@ const OptimizationPanel = ({ suggestions = [], weeklyDebt = 0, onApply, onApplyA
       <div className="space-y-2">
         {suggestions.length === 0 && (
           <div className="text-slate-400 text-sm">
-            Mark events as "moveable" or "skippable" to get suggestions.
+            Mark events as "Movable" to get optimization suggestions.
           </div>
         )}
         {suggestions.map((suggestion) => (

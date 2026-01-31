@@ -4,7 +4,6 @@ from typing import List, Optional
 from uuid import uuid4
 
 from app.models import Event
-from app.services.cognitive_calculator import calculate_event_cost
 
 
 def get_auth_url() -> str:
@@ -16,22 +15,30 @@ def handle_callback(code: str) -> dict:
 
 
 def fetch_events(access_token: Optional[str], start_date: datetime, end_date: datetime) -> List[Event]:
-    """Generate realistic mock events simulating Google Calendar import."""
+    """
+    Generate realistic mock events simulating Google Calendar import.
+    
+    Returns raw events with only basic calendar info (title, time, duration).
+    event_type, participants, has_agenda, requires_tool_switch are NOT set -
+    they will be classified by AI and enriched by the user.
+    """
     import random
     
+    # Templates: (title, duration_minutes, description)
+    # Note: We don't include event_type or meeting fields - those come from AI + user
     templates = [
-        ("Team Standup", 15, 5, True, False, "meeting"),
-        ("Sprint Planning", 60, 8, True, True, "meeting"),
-        ("1:1 with Manager", 30, 2, True, False, "meeting"),
-        ("Client Call", 45, 4, False, True, "meeting"),
-        ("Deep Work: Feature Dev", 120, 1, True, False, "deep_work"),
-        ("Design Review", 45, 6, True, True, "meeting"),
-        ("Lunch Break", 30, 1, True, False, "recovery"),
-        ("Code Review Session", 30, 3, True, True, "meeting"),
-        ("Focus Time", 90, 1, True, False, "deep_work"),
-        ("All Hands", 60, 20, False, True, "meeting"),
-        ("Quick Sync", 15, 3, True, False, "meeting"),
-        ("Walking Meeting", 30, 2, True, False, "recovery"),
+        ("Team Standup", 15, "Daily sync with the team"),
+        ("Sprint Planning", 60, "Planning session for the upcoming sprint"),
+        ("1:1 with Manager", 30, "Weekly check-in with direct manager"),
+        ("Client Call", 45, "Call with external stakeholders"),
+        ("Deep Work: Feature Dev", 120, "Focused development time"),
+        ("Design Review", 45, "Review the latest design mockups"),
+        ("Lunch Break", 30, "Midday break"),
+        ("Code Review Session", 30, "Review pending pull requests"),
+        ("Focus Time", 90, "Protected focus time block"),
+        ("All Hands", 60, "Company-wide meeting"),
+        ("Quick Sync", 15, "Brief alignment discussion"),
+        ("Walking Meeting", 30, "Walk and talk session"),
     ]
     
     events: List[Event] = []
@@ -57,15 +64,17 @@ def fetch_events(access_token: Optional[str], start_date: datetime, end_date: da
                     id=str(uuid4()),
                     google_id=str(uuid4()),
                     title=tpl[0],
+                    description=tpl[2],
                     start_time=start_time,
                     end_time=end_time,
                     duration_minutes=duration,
-                    participants=tpl[2],
-                    has_agenda=tpl[3],
-                    requires_tool_switch=tpl[4],
-                    event_type=tpl[5],
+                    # These fields are intentionally None - to be classified/enriched later
+                    participants=None,
+                    has_agenda=None,
+                    requires_tool_switch=None,
+                    event_type=None,
+                    is_flexible=None,
                 )
-                event.calculated_cost = calculate_event_cost(event)
                 events.append(event)
                 
                 # Next event starts after this one plus a gap

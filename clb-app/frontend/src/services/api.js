@@ -24,6 +24,10 @@ export const addEvent = (event) => handle(api.post("/events", event));
 export const deleteEvent = (id) => handle(api.delete(`/events/${id}`));
 export const updateFlexibility = (id, payload) =>
   handle(api.patch(`/events/${id}/flexibility`, payload));
+export const enrichEvent = (id, payload) =>
+  handle(api.patch(`/events/${id}/enrich`, payload));
+export const getCostBreakdown = (id) =>
+  handle(api.get(`/events/${id}/cost-breakdown`));
 export const analyzeEvents = () => handle(api.get("/events/analyze"));
 
 export const getDailyBudget = () => handle(api.get("/budget/daily"));
@@ -34,6 +38,8 @@ export const applySuggestion = (suggestionId) =>
   handle(api.post("/optimize/apply", { suggestion_id: suggestionId }));
 export const applyAllSuggestions = (ids) =>
   handle(api.post("/optimize/apply-all", { ids }));
+export const getWeekOptimization = () => handle(api.get("/optimize/week"));
+export const applyWeekOptimization = () => handle(api.post("/optimize/week/apply"));
 
 export const getRecoverySuggestions = () => handle(api.get("/recovery/suggestions"));
 export const scheduleRecovery = (payload) => handle(api.post("/recovery/schedule", payload));

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Request
 from app.models import Event, EventCreate
 from app.services.cognitive_calculator import (
     DAILY_BUDGET,
-    calculate_event_cost,
+    calculate_events_with_proximity,
     suggest_recovery_activities,
 )
 from app.services.schedule_optimizer import find_available_recovery_slots
@@ -16,7 +16,11 @@ router = APIRouter()
 @router.get("/recovery/suggestions")
 def get_recovery_suggestions(request: Request) -> dict:
     events = request.app.state.events
-    total = sum(calculate_event_cost(e) for e in events)
+    
+    # Recalculate all costs with proximity awareness
+    calculate_events_with_proximity(events)
+    
+    total = sum(e.calculated_cost or 0 for e in events)
     weekly_debt = total - (DAILY_BUDGET * 7)
     activities = suggest_recovery_activities(weekly_debt)
     for activity in activities:
@@ -51,11 +55,14 @@ def schedule_recovery(request: Request, payload: dict) -> dict:
         start_time=data.start_time,
         end_time=data.end_time,
         duration_minutes=data.duration_minutes,
-        participants=data.participants,
-        has_agenda=data.has_agenda,
-        requires_tool_switch=data.requires_tool_switch,
-        event_type=data.event_type,
+        participants=data.participants if data.participants is not None else 1,
+        has_agenda=data.has_agenda if data.has_agenda is not None else True,
+        requires_tool_switch=data.requires_tool_switch if data.requires_tool_switch is not None else False,
+        event_type=data.event_type if data.event_type else "recovery",
     )
-    event.calculated_cost = calculate_event_cost(event)
     request.app.state.events.append(event)
+    
+    # Recalculate all costs with proximity awareness
+    calculate_events_with_proximity(request.app.state.events)
+    
     return {"status": "scheduled", "event": event}
