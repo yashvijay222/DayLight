@@ -71,6 +71,7 @@ async def lifespan(app: FastAPI):
     app.state.events = generate_mock_week()
     app.state.team_metrics = generate_team_metrics()
     app.state.sage_sessions = {}
+    app.state.daily_session_costs = []  # List of {"date": "YYYY-MM-DD", "amount": float}
     app.state.oauth_tokens = {}
     # Auto-connect to Presage daemon (non-blocking)
     asyncio.create_task(auto_connect_presage())

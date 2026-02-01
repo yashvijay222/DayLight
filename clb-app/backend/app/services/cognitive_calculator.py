@@ -18,7 +18,7 @@ RECOVERY_VALUES = {
 }
 
 
-def calculate_event_base_cost(event: Event) -> int:
+def calculate_event_base_cost(event: Event) -> float:
     """Calculate the base cost of an event without proximity considerations."""
     # Recovery events have negative costs (reduce debt)
     if event.event_type == "recovery":
@@ -36,7 +36,7 @@ def calculate_event_base_cost(event: Event) -> int:
     # Deep work has lower cost (focused, no context switching)
     if event.event_type == "deep_work":
         cost = (event.duration_minutes / 15) * BASE_COST_PER_15MIN * 0.5
-        return round(cost)
+        return float(cost)
     
     # Regular events (meetings, admin, etc.)
     # Use defaults if fields are None (for incomplete events)
@@ -52,10 +52,10 @@ def calculate_event_base_cost(event: Event) -> int:
         cost += 4
     if event.start_time.hour >= 14:
         cost *= 0.9
-    return round(cost)
+    return float(cost)
 
 
-def calculate_event_cost(event: Event, previous_event_end: Optional[datetime] = None) -> int:
+def calculate_event_cost(event: Event, previous_event_end: Optional[datetime] = None) -> float:
     """Calculate event cost with optional proximity penalty."""
     base_cost = calculate_event_base_cost(event)
     
@@ -148,10 +148,10 @@ def calculate_cost_breakdown(event: Event, previous_event_end: Optional[datetime
     return breakdown
 
 
-def calculate_events_with_proximity(events: List[Event]) -> List[Tuple[Event, int]]:
+def calculate_events_with_proximity(events: List[Event]) -> List[Tuple[Event, float]]:
     """Calculate costs for all events considering proximity penalties."""
     sorted_events = sorted(events, key=lambda e: e.start_time)
-    results: List[Tuple[Event, int]] = []
+    results: List[Tuple[Event, float]] = []
     
     previous_end: Optional[datetime] = None
     for event in sorted_events:
@@ -164,20 +164,20 @@ def calculate_events_with_proximity(events: List[Event]) -> List[Tuple[Event, in
     return results
 
 
-def calculate_daily_total(events: List[Event]) -> int:
+def calculate_daily_total(events: List[Event]) -> float:
     """Calculate total cost for a day's events with proximity awareness."""
     results = calculate_events_with_proximity(events)
     return sum(cost for _, cost in results)
 
 
-def detect_overdraft(total: int, budget: int = DAILY_BUDGET) -> Tuple[bool, int, int]:
+def detect_overdraft(total: float, budget: float = DAILY_BUDGET) -> Tuple[bool, float, float]:
     remaining = budget - total
     is_overdrafted = remaining < 0
     overdraft_amount = abs(remaining) if is_overdrafted else 0
     return is_overdrafted, overdraft_amount, remaining
 
 
-def suggest_recovery_activities(overdraft_amount: int) -> List[RecoveryActivity]:
+def suggest_recovery_activities(overdraft_amount: float) -> List[RecoveryActivity]:
     if overdraft_amount <= 0:
         return []
 

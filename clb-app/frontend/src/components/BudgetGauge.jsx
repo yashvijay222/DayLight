@@ -39,7 +39,7 @@ const BudgetGauge = ({ spent = 0, budget = 20, weeklyDebt = 0, weeklyTotal = 0 }
         </div>
         <div>
           <div className="text-sm text-slate-400">Daily Budget</div>
-          <div className="text-2xl font-semibold">{spent} / {budget}</div>
+          <div className="text-2xl font-semibold">{Number(spent).toFixed(2)} / {Number(budget).toFixed(2)}</div>
           <div className={`text-sm ${colorClass}`}>{spent > budget ? "Overdrafted" : "On Track"}</div>
         </div>
       </div>
@@ -47,12 +47,12 @@ const BudgetGauge = ({ spent = 0, budget = 20, weeklyDebt = 0, weeklyTotal = 0 }
       <div className="mt-4 pt-4 border-t border-slate-800">
         <div className="flex justify-between text-sm">
           <span className="text-slate-400">Weekly Total</span>
-          <span className="font-semibold">{weeklyTotal}</span>
+          <span className="font-semibold">{Number(weeklyTotal).toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-sm mt-1">
           <span className="text-slate-400">Weekly Debt</span>
           <span className={`font-semibold ${weeklyDebt > 0 ? "text-debt" : "text-recovery"}`}>
-            {weeklyDebt > 0 ? `+${weeklyDebt}` : weeklyDebt}
+            {weeklyDebt > 0 ? `+${Number(weeklyDebt).toFixed(2)}` : Number(weeklyDebt).toFixed(2)}
           </span>
         </div>
       </div>

@@ -366,14 +366,14 @@ def calculate_stress_level(
 def calculate_cognitive_cost_delta(
     stress_level: int,
     max_delta: int = DEFAULT_CONFIG.max_cost_delta
-) -> int:
+) -> float:
     """
     Calculate cognitive cost adjustment based on stress level.
     
     Maps stress (0-100) to cost delta (0-max_delta).
     Higher stress = higher cost added to event.
     """
-    return round((stress_level / 100) * max_delta)
+    return (stress_level / 100) * max_delta
 
 
 # ============================================================================
@@ -513,7 +513,7 @@ def calculate_cognitive_load_personalized(
 def aggregate_session_delta(
     readings: List[PresageReading],
     method: str = "median"
-) -> int:
+) -> float:
     """
     Aggregate cognitive cost deltas from a session's readings.
     
@@ -528,22 +528,22 @@ def aggregate_session_delta(
         Aggregated cognitive cost delta
     """
     if not readings:
-        return 0
+        return 0.0
     
     deltas = [r.cognitive_cost_delta for r in readings]
     
     if method == "mean":
-        return round(sum(deltas) / len(deltas))
+        return sum(deltas) / len(deltas)
     elif method == "median":
-        return round(median(deltas))
+        return float(median(deltas))
     elif method == "p90":
         # 90th percentile - captures sustained high stress
         sorted_deltas = sorted(deltas)
         idx = int(len(sorted_deltas) * 0.9)
-        return sorted_deltas[min(idx, len(sorted_deltas) - 1)]
+        return float(sorted_deltas[min(idx, len(sorted_deltas) - 1)])
     else:
         # Default to median
-        return round(median(deltas))
+        return float(median(deltas))
 
 
 def aggregate_session_metrics(
