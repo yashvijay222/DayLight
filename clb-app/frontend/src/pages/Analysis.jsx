@@ -2,10 +2,8 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
 import FlexibilityWizard from "../components/FlexibilityWizard";
-import OptimizationPanel from "../components/OptimizationPanel";
 import RecoverySuggestions from "../components/RecoverySuggestions";
 import { useEvents } from "../hooks/useEvents";
-import { useOptimize } from "../hooks/useOptimize";
 import { 
   getRecoverySuggestions, 
   scheduleRecovery, 
@@ -16,8 +14,9 @@ import {
 
 const Analysis = () => {
   const { events, setFlexibility, reload: reloadEvents } = useEvents();
-  const { suggestions, weeklyDebt, apply, applyAll, reload: reloadOptimize } = useOptimize();
   const [recovery, setRecovery] = useState([]);
+  const [recoveryNeed, setRecoveryNeed] = useState(0);
+  const [weeklyDebt, setWeeklyDebt] = useState(0);
   const [weekProposal, setWeekProposal] = useState(null);
   const [loadingOptimize, setLoadingOptimize] = useState(false);
   const [applyingOptimize, setApplyingOptimize] = useState(false);
@@ -38,6 +37,8 @@ const Analysis = () => {
   const loadRecovery = useCallback(async () => {
     const { data } = await getRecoverySuggestions();
     setRecovery(data?.activities || []);
+    setRecoveryNeed(data?.recovery_need || 0);
+    setWeeklyDebt(data?.weekly_debt || 0);
   }, []);
 
   useEffect(() => {
@@ -62,11 +63,10 @@ const Analysis = () => {
         });
       }
       await reloadEvents();
-      await reloadOptimize();
       setWeekProposal(null);
     };
     enrichDefaults();
-  }, [events, reloadEvents, reloadOptimize]);
+  }, [events, reloadEvents]);
 
   const handleClassify = async (eventId, payload) => {
     await setFlexibility(eventId, payload);
@@ -83,37 +83,18 @@ const Analysis = () => {
       });
     }
     await reloadEvents();
-    await reloadOptimize();
     setWeekProposal(null); // Clear proposal when flexibility changes
   };
 
   const handleEnrich = async (eventId, payload) => {
     await enrichEvent(eventId, payload);
     await reloadEvents();
-    await reloadOptimize();
     setWeekProposal(null); // Clear proposal when enrichment changes
-  };
-
-  const handleApply = async (id) => {
-    await apply(id);
-    await reloadEvents();
-    await reloadOptimize();
-    await loadRecovery();
-    setWeekProposal(null);
-  };
-
-  const handleApplyAll = async (ids) => {
-    await applyAll(ids);
-    await reloadEvents();
-    await reloadOptimize();
-    await loadRecovery();
-    setWeekProposal(null);
   };
 
   const handleScheduleRecovery = async (payload) => {
     await scheduleRecovery(payload);
     await reloadEvents();
-    await reloadOptimize();
     await loadRecovery();
   };
 
@@ -169,7 +150,6 @@ const Analysis = () => {
     setApplyingOptimize(true);
     await applyWeekOptimization(selectedIds);
     await reloadEvents();
-    await reloadOptimize();
     await loadRecovery();
     setWeekProposal(null);
     setSelectedChanges({});
@@ -314,16 +294,7 @@ const Analysis = () => {
         </div>
       )}
 
-      {weeklyDebt > 0 && suggestions.length > 0 && (
-        <OptimizationPanel
-          suggestions={suggestions}
-          weeklyDebt={weeklyDebt}
-          onApply={handleApply}
-          onApplyAll={handleApplyAll}
-        />
-      )}
-
-      {weeklyDebt > 0 && (
+      {recovery.length > 0 && (
         <RecoverySuggestions activities={recovery} onSchedule={handleScheduleRecovery} />
       )}
     </div>

@@ -2,26 +2,25 @@ import React, { useEffect, useState, useCallback } from "react";
 
 import BudgetGauge from "./BudgetGauge";
 import CalendarWeekView from "./CalendarWeekView";
-import OptimizationPanel from "./OptimizationPanel";
 import RecoverySuggestions from "./RecoverySuggestions";
 import SageMode from "./SageMode";
 import WeeklyHeatmap from "./WeeklyHeatmap";
 import { useBudget } from "../hooks/useBudget";
 import { useEvents } from "../hooks/useEvents";
-import { useOptimize } from "../hooks/useOptimize";
 import { getRecoverySuggestions, getWeeklyBudget, scheduleRecovery } from "../services/api";
 
 const Dashboard = () => {
   const { events, loading: eventsLoading, reload: reloadEvents } = useEvents();
   const { budget, loading: budgetLoading, reload: reloadBudget } = useBudget();
-  const { suggestions, weeklyDebt, apply, applyAll, reload: reloadOptimize } = useOptimize();
   const [recovery, setRecovery] = useState([]);
+  const [recoveryNeed, setRecoveryNeed] = useState(0);
   const [weeklyTotals, setWeeklyTotals] = useState({});
   const [weekStart, setWeekStart] = useState(null);
 
   const loadRecovery = useCallback(async () => {
     const { data } = await getRecoverySuggestions();
     setRecovery(data?.activities || []);
+    setRecoveryNeed(data?.recovery_need || 0);
   }, []);
 
   const loadWeekly = useCallback(async () => {
@@ -39,23 +38,6 @@ const Dashboard = () => {
     await scheduleRecovery(payload);
     await reloadEvents();
     await reloadBudget();
-    await reloadOptimize();
-    await loadRecovery();
-    await loadWeekly();
-  };
-
-  const handleApplyOptimization = async (id) => {
-    await apply(id);
-    await reloadEvents();
-    await reloadBudget();
-    await loadRecovery();
-    await loadWeekly();
-  };
-
-  const handleApplyAll = async (ids) => {
-    await applyAll(ids);
-    await reloadEvents();
-    await reloadBudget();
     await loadRecovery();
     await loadWeekly();
   };
@@ -63,7 +45,6 @@ const Dashboard = () => {
   const handleSessionEnd = async () => {
     await reloadEvents();
     await reloadBudget();
-    await reloadOptimize();
     await loadRecovery();
     await loadWeekly();
   };
@@ -80,7 +61,7 @@ const Dashboard = () => {
         <BudgetGauge 
           spent={budget?.spent || 0} 
           budget={budget?.daily_budget || 20}
-          weeklyDebt={budget?.weekly_debt || weeklyDebt}
+          weeklyDebt={budget?.weekly_debt || 0}
           weeklyTotal={budget?.weekly_total || 0}
         />
         <SageMode events={events} onSessionEnd={handleSessionEnd} />
@@ -88,16 +69,7 @@ const Dashboard = () => {
 
       <CalendarWeekView events={events} onEventsChange={handleEventsChange} />
 
-      {weeklyDebt > 0 && (
-        <OptimizationPanel
-          suggestions={suggestions}
-          weeklyDebt={weeklyDebt}
-          onApply={handleApplyOptimization}
-          onApplyAll={handleApplyAll}
-        />
-      )}
-
-      {weeklyDebt > 0 && (
+      {recovery.length > 0 && (
         <RecoverySuggestions activities={recovery} onSchedule={handleScheduleRecovery} />
       )}
 
