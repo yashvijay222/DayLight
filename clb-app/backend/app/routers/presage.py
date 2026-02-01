@@ -101,11 +101,22 @@ class PresageClient:
     def connect(self) -> bool:
         """Connect to the Presage daemon for metrics."""
         try:
+            # Close existing socket if any
+            if self.metrics_socket:
+                try:
+                    self.metrics_socket.close()
+                except Exception:
+                    pass
+                self.metrics_socket = None
+            
             # Connect to metrics port
             self.metrics_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.metrics_socket.settimeout(10.0)
             self.metrics_socket.connect((self.metrics_host, self.metrics_port))
             self.metrics_socket.setblocking(False)
+            
+            # Set TCP keepalive to detect broken connections
+            self.metrics_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
             
             self.connected = True
             logger.info(f"Connected to Presage daemon at {self.metrics_host}:{self.metrics_port}")
@@ -267,6 +278,7 @@ class PresageClient:
             data = self.metrics_socket.recv(4096)
             if data:
                 self.buffer += data.decode('utf-8')
+                logger.debug(f"Received {len(data)} bytes from daemon")
                 
                 # Parse newline-delimited JSON messages
                 while '\n' in self.buffer:
@@ -275,6 +287,13 @@ class PresageClient:
                         try:
                             msg = json.loads(line)
                             metrics.append(msg)
+                            
+                            # Log received metrics for debugging
+                            msg_type = msg.get("type", "unknown")
+                            if msg_type == "metrics":
+                                logger.info(f"Received core metrics: pulse={msg.get('pulse_rate')}, breathing={msg.get('breathing_rate')}")
+                            elif msg_type == "edge_metrics":
+                                logger.debug(f"Received edge metrics with {len(msg.get('breathing_upper_trace', []))} breathing points")
                             
                             # Update history for metrics messages
                             if msg.get("type") == "metrics":
@@ -285,15 +304,18 @@ class PresageClient:
                                 self.latest_metrics = msg
                                 
                         except json.JSONDecodeError:
-                            logger.warning(f"Invalid JSON from daemon: {line}")
+                            logger.warning(f"Invalid JSON from daemon: {line[:100]}")
                             
         except BlockingIOError:
-            pass
+            pass  # No data available, this is normal
         except ConnectionResetError:
-            logger.warning("Connection reset by daemon")
+            logger.warning("Connection reset by daemon - will reconnect")
+            self.connected = False
+        except BrokenPipeError:
+            logger.warning("Broken pipe to daemon - will reconnect")
             self.connected = False
         except Exception as e:
-            logger.error(f"Error reading from daemon: {e}")
+            logger.error(f"Error reading from daemon: {type(e).__name__}: {e}")
             self.connected = False
             
         return metrics
@@ -781,8 +803,10 @@ async def websocket_metrics_stream(websocket: WebSocket):
                 metrics_list = client.read_metrics()
                 
                 for metrics in metrics_list:
-                    # Enrich metrics with cognitive scores using the service
-                    if metrics.get("type") == "metrics":
+                    msg_type = metrics.get("type")
+                    
+                    # Handle core metrics (from cloud processing)
+                    if msg_type == "metrics":
                         vital_input = _build_vital_input(metrics, client.pulse_history)
                         cognitive = calculate_cognitive_load_personalized(
                             vital_input,
@@ -797,6 +821,33 @@ async def websocket_metrics_stream(websocket: WebSocket):
                             "confidence": round(cognitive.confidence, 2),
                         })
                     
+                    # Handle edge metrics (real-time frame-by-frame data)
+                    elif msg_type == "edge_metrics":
+                        # Edge metrics provide pulse_trace and breathing traces
+                        # Use these for real-time HRV calculation
+                        vital_input = _build_vital_input(metrics, client.pulse_history)
+                        cognitive = calculate_cognitive_load_personalized(
+                            vital_input,
+                            user_id=user_id,
+                            learn_baseline=learn_baseline
+                        )
+                        metrics.update({
+                            "hrv": cognitive.hrv,
+                            "focus_score": cognitive.focus_score,
+                            "stress_level": cognitive.stress_level,
+                            "cognitive_cost_delta": cognitive.cognitive_cost_delta,
+                            "confidence": round(cognitive.confidence, 2),
+                            # Mark this as processed edge metrics
+                            "type": "metrics",  # Frontend expects "metrics" type
+                            "source": "edge",  # But note it came from edge
+                        })
+                    
+                    # Handle imaging status (face detected, signal quality, etc.)
+                    elif msg_type == "imaging_status":
+                        # Pass through imaging status for debugging/UI feedback
+                        logger.debug(f"Imaging status: {metrics.get('status')}")
+                    
+                    # Send all messages to frontend
                     await websocket.send_json(metrics)
             else:
                 # Try to reconnect

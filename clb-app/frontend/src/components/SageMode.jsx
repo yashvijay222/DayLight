@@ -214,14 +214,16 @@ const SageMode = ({ events = [], onSessionEnd }) => {
             }
           } else if (message.type === "sdk_status") {
             console.log("[Sage] SDK status:", message.status, message.session_id || "", message.segment_index ?? "");
+          } else if (message.type === "imaging_status") {
+            // Imaging status from SDK (face detected, signal quality, etc.)
+            console.log("[Sage] Imaging status:", message.status, "at", message.timestamp);
+            // Could show this in UI for debugging/feedback
           } else if (message.type === "connection_status") {
             console.log("[Sage] Daemon connection status:", message.connected);
             // If daemon disconnected, we might start getting no metrics
             if (!message.connected) {
               console.log("[Sage] Daemon disconnected, may switch to simulated data");
             }
-          } else if (message.type === "sdk_status") {
-            console.log("[Sage] SDK status:", message.status, message.message || "");
           }
         } catch (err) {
           console.error("[Sage] Failed to parse metrics message:", err);

@@ -796,10 +796,15 @@ private:
             
             // SDK configuration
             settings.headless = true;  // No GUI
-            settings.enable_edge_metrics = true;
+            settings.enable_edge_metrics = true;  // CRITICAL: Enable edge metrics for real-time data
             settings.verbosity_level = 0;  // Reduce logging for segments
-            settings.continuous.preprocessed_data_buffer_duration_s = 0.25;  // Reduced for faster initial metrics
+            settings.continuous.preprocessed_data_buffer_duration_s = 0.2;  // Match SDK sample default
             settings.integration.api_key = api_key_;
+            
+            // Settings from SDK samples that we were missing:
+            settings.scale_input = true;  // Enable input scaling in ImageTransformationCalculator
+            settings.start_with_recording_on = true;  // Auto-start recording for file input
+            settings.interframe_delay_ms = 20;  // Match SDK default: ms before capturing next frame
             
             // Create SDK container
             auto container = std::make_unique<container::CpuContinuousRestForegroundContainer>(settings);
@@ -832,6 +837,76 @@ private:
             if (!metrics_status.ok()) {
                 LOG(ERROR) << "Failed to set SDK metrics callback: " << metrics_status.message();
                 return;
+            }
+            
+            // CRITICAL FIX: Add Edge Metrics callback for real-time frame-by-frame data
+            // Edge metrics provide breathing traces on every frame without cloud latency
+            // Note: Edge metrics only have breathing data, not pulse (that comes from core metrics)
+            auto edge_status = container->SetOnEdgeMetricsOutput(
+                [this, session_id, segment_index](const presage::physiology::Metrics& metrics, int64_t input_timestamp) {
+                    json j;
+                    j["type"] = "edge_metrics";
+                    j["session_id"] = session_id;
+                    j["segment_index"] = segment_index;
+                    j["realtime"] = true;
+                    j["timestamp"] = input_timestamp;
+                    
+                    // Extract breathing upper trace (chest movement)
+                    if (!metrics.breathing().upper_trace().empty()) {
+                        j["breathing_upper_trace"] = json::array();
+                        for (const auto& point : metrics.breathing().upper_trace()) {
+                            j["breathing_upper_trace"].push_back({point.timestamp(), point.value()});
+                        }
+                    }
+                    
+                    // Extract breathing lower trace (abdomen movement)
+                    if (!metrics.breathing().lower_trace().empty()) {
+                        j["breathing_lower_trace"] = json::array();
+                        for (const auto& point : metrics.breathing().lower_trace()) {
+                            j["breathing_lower_trace"].push_back({point.timestamp(), point.value()});
+                        }
+                    }
+                    
+                    // Only broadcast if we have breathing data
+                    if (j.contains("breathing_upper_trace") || j.contains("breathing_lower_trace")) {
+                        if (g_metrics_server) {
+                            g_metrics_server->broadcast(j.dump());
+                        }
+                    }
+                    
+                    return absl::OkStatus();
+                }
+            );
+            
+            if (!edge_status.ok()) {
+                LOG(WARNING) << "Failed to set edge metrics callback: " << edge_status.message();
+                // Continue anyway - edge metrics are nice to have but not required
+            }
+            
+            // Add Status callback to track imaging status (face detected, signal quality, etc.)
+            auto status_cb = container->SetOnStatusChange(
+                [this, session_id, segment_index](presage::physiology::StatusValue status) {
+                    json j;
+                    j["type"] = "imaging_status";
+                    j["session_id"] = session_id;
+                    j["segment_index"] = segment_index;
+                    j["status"] = presage::physiology::GetStatusDescription(status.value());
+                    j["status_code"] = static_cast<int>(status.value());
+                    j["timestamp"] = status.timestamp();
+                    
+                    LOG(INFO) << "Imaging status: " << j["status"].get<std::string>() 
+                              << " at timestamp " << status.timestamp();
+                    
+                    if (g_metrics_server) {
+                        g_metrics_server->broadcast(j.dump());
+                    }
+                    
+                    return absl::OkStatus();
+                }
+            );
+            
+            if (!status_cb.ok()) {
+                LOG(WARNING) << "Failed to set status callback: " << status_cb.message();
             }
             
             // Initialize and run SDK (blocking until video ends)
