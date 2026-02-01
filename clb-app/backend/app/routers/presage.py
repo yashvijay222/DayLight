@@ -519,11 +519,24 @@ def end_sage(request: Request, payload: dict) -> dict:
     session.actual_cost = session.estimated_cost + avg_delta
     session.debt_adjustment = session.actual_cost - session.estimated_cost
     
+    # Calculate hourly projection (4.0 is base points for 60 min regular session)
+    session.hourly_projection = 4.0 + avg_delta
+    
     if session.event_id:
         for event in request.app.state.events:
             if event.id == session.event_id:
                 event.actual_cost = session.actual_cost
                 break
+    else:
+        # For standalone sessions (no event), record the cost impact for today's budget
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        # Use actual_cost if it was a standalone session (estimated_cost was 0)
+        # equivalently use debt_adjustment.
+        request.app.state.daily_session_costs.append({
+            "date": today_str,
+            "amount": session.actual_cost
+        })
+        logger.info(f"Recorded standalone session cost: {session.actual_cost} for {today_str}")
     
     # Remove session from active sessions
     del request.app.state.sage_sessions[session_id]
