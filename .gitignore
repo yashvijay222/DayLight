@@ -80,3 +80,4 @@ temp/
 .cache/
 clb-app/backend/.env
 clb-app/backend/presage/sample/
+.cursor/plans
