@@ -62,15 +62,13 @@ const isEventPastEndTime = (event) => {
   return now >= endTime;
 };
 
-// Get effective cost (prorated if completed early, full if auto-completed)
+// Get effective cost (prorated if completed early, full if completed)
 const getEffectiveCost = (event) => {
-  const isPast = isEventPastEndTime(event);
-  
   if (event.is_completed && event.prorated_cost !== null && event.prorated_cost !== undefined) {
     // Manually completed early - use prorated cost
     return event.prorated_cost;
-  } else if (event.is_completed || isPast) {
-    // Auto-completed or manually completed without proration
+  } else if (event.is_completed) {
+    // Manually completed without proration
     return event.calculated_cost || 0;
   }
   // Not yet completed
@@ -239,10 +237,34 @@ const CalendarWeekView = ({ events = [], onEventsChange }) => {
     setCollisionWarning(null);
   };
 
-  // Handle collision warning response - cancel the save
+  // Handle collision warning response - edit time
+  const handleEditTime = () => {
+    if (!collisionWarning) return;
+    if (collisionWarning.source === "drag" && collisionWarning.existingEventId) {
+      const eventToEdit = events.find((e) => e.id === collisionWarning.existingEventId);
+      if (eventToEdit) {
+        const pending = collisionWarning.pendingEventData || {};
+        const startIso = pending.start_time || eventToEdit.start_time;
+        const endIso = pending.end_time || eventToEdit.end_time;
+        setEditingEvent({ ...eventToEdit, start_time: startIso, end_time: endIso });
+        setEditForm({
+          title: eventToEdit.title || "",
+          description: eventToEdit.description || "",
+          start_time: toTimeInput(startIso),
+          end_time: toTimeInput(endIso),
+          event_type: eventToEdit.event_type || "",
+        });
+        setIsCreatingNew(false);
+        setNewEventTargetDate(null);
+        setIsEditingOpen(true);
+      }
+    }
+    setCollisionWarning(null);
+  };
+
+  // Handle collision warning response - cancel the save/move
   const handleCancelSave = () => {
     setCollisionWarning(null);
-    // Keep the edit modal open so user can change the time
   };
 
   const handleSaveEdit = async () => {
@@ -301,6 +323,7 @@ const CalendarWeekView = ({ events = [], onEventsChange }) => {
         collidingEvents: collisions,
         isNew: isCreatingNew,
         existingEventId: isCreatingNew ? null : editingEvent?.id,
+        source: "edit",
       });
       return; // Don't save yet
     }
@@ -416,6 +439,7 @@ const CalendarWeekView = ({ events = [], onEventsChange }) => {
         collidingEvents: collisions,
         isNew: false,
         existingEventId: draggedEvent.id,
+        source: "drag",
       });
       setDraggedEvent(null);
       return;
@@ -466,9 +490,6 @@ const CalendarWeekView = ({ events = [], onEventsChange }) => {
           <div className="flex flex-nowrap gap-3">
             {WEEKDAYS.map((day) => {
               const items = grouped[day] || [];
-              // Use effective cost (prorated for early completions)
-              const totalCost = items.reduce((sum, e) => sum + getEffectiveCost(e), 0);
-              const scheduledCost = items.reduce((sum, e) => sum + (e.calculated_cost || 0), 0);
 
               return (
                 <div 
@@ -483,17 +504,6 @@ const CalendarWeekView = ({ events = [], onEventsChange }) => {
                   <div className="flex items-center justify-between mb-2">
                     <div className="text-sm font-medium text-slate-300">{day}</div>
                     <div className="flex items-center gap-2">
-                      {items.length > 0 && (
-                        <div className={`text-xs font-semibold ${totalCost > DAILY_BUDGET ? "text-debt" : "text-slate-400"}`}>
-                          {totalCost !== scheduledCost ? (
-                            <span title={`Scheduled: ${scheduledCost} pts`}>
-                              {totalCost}/{scheduledCost} pts
-                            </span>
-                          ) : (
-                            <span>{scheduledCost} pts</span>
-                          )}
-                        </div>
-                      )}
                       <button
                         onClick={() => handleAddEvent(day)}
                         className="w-5 h-5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white flex items-center justify-center transition-colors"
@@ -510,8 +520,7 @@ const CalendarWeekView = ({ events = [], onEventsChange }) => {
                       <div className="text-xs text-slate-600">No events</div>
                     ) : (
                       items.map((event) => {
-                        const isPast = isEventPastEndTime(event);
-                        const isChecked = event.is_completed || isPast;
+                        const isChecked = event.is_completed;
                         const effectiveCost = getEffectiveCost(event);
                         const scheduledEventCost = event.calculated_cost || 0;
                         const hasProration = event.is_completed && event.prorated_cost !== null && event.prorated_cost !== undefined && event.prorated_cost < scheduledEventCost;
@@ -543,7 +552,7 @@ const CalendarWeekView = ({ events = [], onEventsChange }) => {
                                 onChange={(e) => handleToggleComplete(e, event)}
                                 onClick={(e) => e.stopPropagation()}
                                 className="event-checkbox mt-0.5"
-                                title={isPast ? "Auto-completed (time passed)" : "Mark as complete"}
+                                title="Mark as complete"
                               />
                               
                               {/* Title and points */}
@@ -763,22 +772,48 @@ const CalendarWeekView = ({ events = [], onEventsChange }) => {
               Do you want to save anyway or go back to edit the time?
             </p>
 
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={handleCancelSave}
-                className="flex-1 px-4 py-2 rounded-lg bg-slate-800 text-slate-200 text-sm hover:bg-slate-700"
-              >
-                Edit Time
-              </button>
-              <button
-                type="button"
-                onClick={handleKeepAnyway}
-                className="flex-1 px-4 py-2 rounded-lg bg-warning text-slate-900 text-sm font-medium hover:bg-warning/90"
-              >
-                Save Anyway
-              </button>
-            </div>
+            {collisionWarning.source === "drag" ? (
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleEditTime}
+                  className="flex-1 px-4 py-2 rounded-lg bg-slate-800 text-slate-200 text-sm hover:bg-slate-700"
+                >
+                  Edit Time
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelSave}
+                  className="flex-1 px-4 py-2 rounded-lg bg-slate-800 text-slate-200 text-sm hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleKeepAnyway}
+                  className="flex-1 px-4 py-2 rounded-lg bg-warning text-slate-900 text-sm font-medium hover:bg-warning/90"
+                >
+                  Save Anyway
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleEditTime}
+                  className="flex-1 px-4 py-2 rounded-lg bg-slate-800 text-slate-200 text-sm hover:bg-slate-700"
+                >
+                  Edit Time
+                </button>
+                <button
+                  type="button"
+                  onClick={handleKeepAnyway}
+                  className="flex-1 px-4 py-2 rounded-lg bg-warning text-slate-900 text-sm font-medium hover:bg-warning/90"
+                >
+                  Save Anyway
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

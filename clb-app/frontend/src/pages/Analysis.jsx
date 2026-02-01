@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
 import FlexibilityWizard from "../components/FlexibilityWizard";
@@ -27,10 +27,12 @@ const Analysis = () => {
   // Check if all events have flexibility set
   const allClassified = events.length > 0 && events.every(e => e.is_flexible !== null);
   
-  // Check if any meetings need enrichment
+  const autoEnrichedRef = useRef(new Set());
+
+  // Check if any meetings need enrichment (auto-filled with defaults)
   const needsEnrichment = events.some(e => 
     (e.event_type === "meeting" || e.event_type === "admin") && 
-    (e.participants === null || e.has_agenda === null)
+    (e.participants === null || e.has_agenda === null || e.requires_tool_switch === null)
   );
 
   const loadRecovery = useCallback(async () => {
@@ -42,8 +44,45 @@ const Analysis = () => {
     loadRecovery();
   }, [loadRecovery]);
 
+  useEffect(() => {
+    const enrichDefaults = async () => {
+      const targets = events.filter(
+        (e) =>
+          (e.event_type === "meeting" || e.event_type === "admin") &&
+          (e.participants === null || e.has_agenda === null || e.requires_tool_switch === null) &&
+          !autoEnrichedRef.current.has(e.id)
+      );
+      if (targets.length === 0) return;
+      for (const event of targets) {
+        autoEnrichedRef.current.add(event.id);
+        await enrichEvent(event.id, {
+          participants: event.participants ?? 2,
+          has_agenda: event.has_agenda ?? true,
+          requires_tool_switch: event.requires_tool_switch ?? false,
+        });
+      }
+      await reloadEvents();
+      await reloadOptimize();
+      setWeekProposal(null);
+    };
+    enrichDefaults();
+  }, [events, reloadEvents, reloadOptimize]);
+
   const handleClassify = async (eventId, payload) => {
     await setFlexibility(eventId, payload);
+    const event = events.find((e) => e.id === eventId);
+    if (
+      event &&
+      (event.event_type === "meeting" || event.event_type === "admin") &&
+      (event.participants === null || event.has_agenda === null || event.requires_tool_switch === null)
+    ) {
+      await enrichEvent(eventId, {
+        participants: event.participants ?? 2,
+        has_agenda: event.has_agenda ?? true,
+        requires_tool_switch: event.requires_tool_switch ?? false,
+      });
+    }
+    await reloadEvents();
     await reloadOptimize();
     setWeekProposal(null); // Clear proposal when flexibility changes
   };
