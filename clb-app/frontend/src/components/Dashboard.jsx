@@ -72,7 +72,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <BudgetGauge 
           spent={budget?.spent || 0} 
-          budget={budget?.daily_budget || 32}
+          budget={budget?.daily_budget || 20}
           weeklyDebt={budget?.weekly_debt || weeklyDebt}
           weeklyTotal={budget?.weekly_total || 0}
         />

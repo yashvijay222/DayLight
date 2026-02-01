@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from app.routers import baseline, budget, calendar, events, optimize, presage, recovery, team
 from app.routers.presage import get_presage_client
 from app.utils.mock_data import generate_mock_week, generate_team_metrics
+from app.services.event_classifier import classify_event
+from app.services.cognitive_calculator import calculate_events_with_proximity
 
 load_dotenv()
 
@@ -37,6 +39,31 @@ async def auto_connect_presage():
     return False
 
 
+def _classify_and_prepare_events(events_list):
+    """Classify events using AI and calculate initial costs."""
+    for event in events_list:
+        if event.event_type is None:
+            # Classify using AI (or fallback heuristics)
+            event.event_type = classify_event(
+                title=event.title,
+                duration_minutes=event.duration_minutes,
+                description=event.description,
+            )
+            
+            # For non-meeting types, set default values for meeting-specific fields
+            if event.event_type in ("recovery", "deep_work"):
+                if event.participants is None:
+                    event.participants = 1
+                if event.has_agenda is None:
+                    event.has_agenda = True
+                if event.requires_tool_switch is None:
+                    event.requires_tool_switch = False
+    
+    # Calculate costs with proximity awareness
+    calculate_events_with_proximity(events_list)
+    return events_list
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: seed data
@@ -45,11 +72,10 @@ async def lifespan(app: FastAPI):
     app.state.team_metrics = generate_team_metrics()
     app.state.sage_sessions = {}
     app.state.oauth_tokens = {}
-    
     # Auto-connect to Presage daemon (non-blocking)
     asyncio.create_task(auto_connect_presage())
-    
-    logger.info("DayLight Backend started successfully")
+    app.state.last_suggestions = None
+    app.state.last_week_proposal = None
     yield
     
     # Shutdown: cleanup

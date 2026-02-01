@@ -3,19 +3,37 @@ from typing import Optional
 
 from fastapi import APIRouter, Request
 
-from app.models import OptimizationSuggestion
-from app.services.cognitive_calculator import DAILY_BUDGET, calculate_event_cost
-from app.services.schedule_optimizer import generate_suggestions
+from app.models import OptimizationSuggestion, WeekOptimizationProposal
+from app.services.cognitive_calculator import (
+    DAILY_BUDGET,
+    calculate_events_with_proximity,
+)
+from app.services.schedule_optimizer import (
+    apply_week_optimization,
+    generate_suggestions,
+    optimize_week,
+)
 
 router = APIRouter()
+
+
+def _recalculate_costs(request: Request):
+    """Recalculate all event costs with proximity awareness."""
+    calculate_events_with_proximity(request.app.state.events)
+
+
+def _get_weekly_debt(request: Request) -> int:
+    """Calculate weekly debt with proximity-aware costs."""
+    _recalculate_costs(request)
+    total = sum(e.calculated_cost or 0 for e in request.app.state.events)
+    return total - (DAILY_BUDGET * 7)
 
 
 def _get_suggestions(request: Request):
     """Helper to get or generate suggestions."""
     suggestions = getattr(request.app.state, "last_suggestions", None)
     if not suggestions:
-        total = sum(calculate_event_cost(e) for e in request.app.state.events)
-        weekly_debt = total - (DAILY_BUDGET * 7)
+        weekly_debt = _get_weekly_debt(request)
         suggestions = generate_suggestions(request.app.state.events, weekly_debt)
         request.app.state.last_suggestions = suggestions
     return suggestions
@@ -29,29 +47,28 @@ def _apply_single_suggestion(request: Request, suggestion: OptimizationSuggestio
                 request.app.state.events = [
                     e for e in request.app.state.events if e.id != event.id
                 ]
+                _recalculate_costs(request)
                 return True
             elif suggestion.suggestion_type == "postpone" and suggestion.new_time:
                 delta = event.end_time - event.start_time
                 event.start_time = suggestion.new_time
                 event.end_time = suggestion.new_time + delta
-                event.calculated_cost = calculate_event_cost(event)
+                _recalculate_costs(request)
                 return True
             elif suggestion.suggestion_type == "shorten":
                 original_minutes = event.duration_minutes
                 new_minutes = max(15, round(original_minutes * 0.8))
                 event.duration_minutes = new_minutes
                 event.end_time = event.start_time + timedelta(minutes=new_minutes)
-                event.calculated_cost = calculate_event_cost(event)
+                _recalculate_costs(request)
                 return True
     return False
 
 
 @router.get("/optimize/suggestions")
-def get_suggestions(request: Request) -> dict:
-    events = request.app.state.events
-    total = sum(calculate_event_cost(e) for e in events)
-    weekly_debt = total - (DAILY_BUDGET * 7)
-    suggestions = generate_suggestions(events, weekly_debt)
+def get_suggestions_endpoint(request: Request) -> dict:
+    weekly_debt = _get_weekly_debt(request)
+    suggestions = generate_suggestions(request.app.state.events, weekly_debt)
     request.app.state.last_suggestions = suggestions
     return {"weekly_debt": weekly_debt, "suggestions": suggestions}
 
@@ -64,8 +81,9 @@ def apply_suggestion_endpoint(request: Request, payload: dict) -> dict:
     for suggestion in suggestions:
         if suggestion.suggestion_id == suggestion_id:
             if _apply_single_suggestion(request, suggestion):
-                # Clear cached suggestions since events changed
+                # Clear cached data since events changed
                 request.app.state.last_suggestions = None
+                request.app.state.last_week_proposal = None
                 return {"status": "applied", "suggestion": suggestion}
     return {"status": "not_found"}
 
@@ -84,8 +102,51 @@ def apply_all_suggestions(request: Request, payload: dict) -> dict:
             if _apply_single_suggestion(request, suggestion):
                 applied.append(suggestion.suggestion_id)
 
-    # Clear cached suggestions since events changed
+    # Clear cached data since events changed
     if applied:
         request.app.state.last_suggestions = None
+        request.app.state.last_week_proposal = None
     
     return {"status": "ok", "applied": applied, "count": len(applied)}
+
+
+@router.get("/optimize/week")
+def get_week_optimization(request: Request) -> dict:
+    """
+    Generate a proposal to optimize the week's schedule.
+    Redistributes movable events to keep daily debt ≤ 20 and maximize gaps.
+    """
+    _recalculate_costs(request)
+    events = request.app.state.events
+    
+    # Check if all events have flexibility set
+    all_classified = all(e.is_flexible is not None for e in events)
+    
+    proposal = optimize_week(events)
+    request.app.state.last_week_proposal = proposal
+    
+    return {
+        "all_classified": all_classified,
+        "proposal": proposal,
+        "daily_budget": DAILY_BUDGET,
+    }
+
+
+@router.post("/optimize/week/apply")
+def apply_week_optimization_endpoint(request: Request) -> dict:
+    """Apply the last generated week optimization proposal."""
+    proposal = getattr(request.app.state, "last_week_proposal", None)
+    
+    if not proposal:
+        return {"status": "error", "message": "No optimization proposal found. Generate one first."}
+    
+    applied_count = apply_week_optimization(request.app.state.events, proposal)
+    
+    # Clear cached data
+    request.app.state.last_suggestions = None
+    request.app.state.last_week_proposal = None
+    
+    return {
+        "status": "applied",
+        "changes_applied": applied_count,
+    }

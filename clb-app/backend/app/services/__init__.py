@@ -1,10 +1,15 @@
 from .cognitive_calculator import (
     calculate_event_cost,
+    calculate_event_base_cost,
+    calculate_cost_breakdown,
+    calculate_events_with_proximity,
     calculate_daily_total,
     detect_overdraft,
     suggest_recovery_activities,
     DAILY_BUDGET,
     RECOVERY_VALUES,
+    PROXIMITY_THRESHOLD_MINUTES,
+    PROXIMITY_INCREMENT,
 )
 from .cognitive_load import (
     # Configuration
@@ -48,6 +53,8 @@ from .user_baseline import (
 from .schedule_optimizer import (
     generate_suggestions,
     find_available_recovery_slots,
+    optimize_week,
+    apply_week_optimization,
 )
 from .google_calendar import (
     get_auth_url,
@@ -58,10 +65,18 @@ from .google_calendar import (
     delete_event,
     use_mock_data,
 )
+from .event_classifier import (
+    classify_event,
+    classify_events_batch,
+    VALID_EVENT_TYPES,
+)
 
 __all__ = [
     # Cognitive Calculator (event costs)
     "calculate_event_cost",
+    "calculate_event_base_cost",
+    "calculate_cost_breakdown",
+    "calculate_events_with_proximity",
     "calculate_daily_total",
     "detect_overdraft",
     "suggest_recovery_activities",
@@ -100,6 +115,12 @@ __all__ = [
     "generate_suggestions",
     "find_available_recovery_slots",
     # Google Calendar
+    "PROXIMITY_THRESHOLD_MINUTES",
+    "PROXIMITY_INCREMENT",
+    "generate_suggestions",
+    "find_available_recovery_slots",
+    "optimize_week",
+    "apply_week_optimization",
     "get_auth_url",
     "handle_callback",
     "fetch_events",
@@ -107,4 +128,7 @@ __all__ = [
     "update_event",
     "delete_event",
     "use_mock_data",
+    "classify_event",
+    "classify_events_batch",
+    "VALID_EVENT_TYPES",
 ]

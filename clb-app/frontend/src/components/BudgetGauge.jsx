@@ -6,7 +6,7 @@ const getStatusColor = (spent, budget) => {
   return "text-recovery";
 };
 
-const BudgetGauge = ({ spent = 0, budget = 32, weeklyDebt = 0, weeklyTotal = 0 }) => {
+const BudgetGauge = ({ spent = 0, budget = 20, weeklyDebt = 0, weeklyTotal = 0 }) => {
   const pct = Math.min(100, Math.max(0, Math.round((spent / budget) * 100)));
   const strokeDasharray = `${pct} ${100 - pct}`;
   const colorClass = getStatusColor(spent, budget);
