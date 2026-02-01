@@ -40,7 +40,8 @@ export const applySuggestion = (suggestionId) =>
 export const applyAllSuggestions = (ids) =>
   handle(api.post("/optimize/apply-all", { ids }));
 export const getWeekOptimization = () => handle(api.get("/optimize/week"));
-export const applyWeekOptimization = () => handle(api.post("/optimize/week/apply"));
+export const applyWeekOptimization = (selectedEventIds = null) => 
+  handle(api.post("/optimize/week/apply", selectedEventIds ? { selected_event_ids: selectedEventIds } : {}));
 
 export const getRecoverySuggestions = () => handle(api.get("/recovery/suggestions"));
 export const scheduleRecovery = (payload) => handle(api.post("/recovery/schedule", payload));

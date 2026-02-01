@@ -1,18 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import EventCard from "./EventCard";
 
-const getButtonStyle = (event, isMovable, pendingFlexibility, isLoading) => {
+const getButtonStyle = (event, isMovable, isLoading) => {
   const base = "px-3 py-1.5 rounded-lg text-xs transition disabled:opacity-50";
   
-  // Check pending changes first
-  const currentFlexibility = pendingFlexibility !== undefined ? pendingFlexibility : event.is_flexible;
-  const hasPendingChange = pendingFlexibility !== undefined && pendingFlexibility !== event.is_flexible;
-  
-  if (isMovable && currentFlexibility === true) {
-    return `${base} bg-warning/30 ring-2 ring-warning ${hasPendingChange ? "animate-pulse" : ""}`;
+  if (isLoading) {
+    return `${base} bg-slate-800 opacity-50`;
   }
-  if (!isMovable && currentFlexibility === false) {
-    return `${base} bg-slate-600 ring-2 ring-slate-400 ${hasPendingChange ? "animate-pulse" : ""}`;
+  
+  if (isMovable && event.is_flexible === true) {
+    return `${base} bg-warning/30 ring-2 ring-warning`;
+  }
+  if (!isMovable && event.is_flexible === false) {
+    return `${base} bg-slate-600 ring-2 ring-slate-400`;
   }
   
   return `${base} bg-slate-800 hover:bg-slate-700`;
@@ -31,85 +31,40 @@ const needsEnrichment = (event, pendingEnrichment) => {
 };
 
 const FlexibilityWizard = ({ events = [], onClassify, onEnrich }) => {
-  const [saving, setSaving] = useState(false);
+  // Track which events are currently being saved
+  const [savingEvents, setSavingEvents] = useState({});
   
-  // Track pending changes: { eventId: { flexibility: bool, enrichment: { participants, has_agenda } } }
-  const [pendingChanges, setPendingChanges] = useState({});
-  
-  // Reset pending changes when events change (e.g., after save)
-  useEffect(() => {
-    setPendingChanges({});
-  }, [events]);
-  
-  const hasPendingChanges = Object.keys(pendingChanges).length > 0;
-  
-  // Count events that need attention (considering pending changes)
+  // Count events that need attention
   const getClassifiedCount = () => {
-    return events.filter(e => {
-      const pending = pendingChanges[e.id];
-      const flexibility = pending?.flexibility ?? e.is_flexible;
-      return flexibility !== null;
-    }).length;
+    return events.filter(e => e.is_flexible !== null).length;
   };
   
   const getNeedsEnrichmentCount = () => {
-    return events.filter(e => needsEnrichment(e, pendingChanges[e.id]?.enrichment)).length;
+    return events.filter(e => needsEnrichment(e, {})).length;
   };
   
   const classified = getClassifiedCount();
   const total = events.length;
   const needsEnrichmentCount = getNeedsEnrichmentCount();
 
-  // Handle flexibility change (local only)
-  const handleFlexibilityChange = (eventId, isFlexible) => {
-    setPendingChanges(prev => ({
-      ...prev,
-      [eventId]: {
-        ...prev[eventId],
-        flexibility: isFlexible,
-      }
-    }));
-  };
-  
-  // Handle enrichment change (local only)
-  const handleEnrichmentChange = (eventId, field, value) => {
-    setPendingChanges(prev => ({
-      ...prev,
-      [eventId]: {
-        ...prev[eventId],
-        enrichment: {
-          ...prev[eventId]?.enrichment,
-          [field]: value,
-        }
-      }
-    }));
-  };
-  
-  // Save all pending changes
-  const handleSaveAll = async () => {
-    setSaving(true);
-    
-    const promises = [];
-    
-    for (const [eventId, changes] of Object.entries(pendingChanges)) {
-      // Save flexibility if changed
-      if (changes.flexibility !== undefined) {
-        promises.push(
-          onClassify(eventId, { event_id: eventId, is_flexible: changes.flexibility })
-        );
-      }
-      
-      // Save enrichment if changed
-      if (changes.enrichment && Object.keys(changes.enrichment).length > 0) {
-        promises.push(
-          onEnrich(eventId, changes.enrichment)
-        );
-      }
+  // Handle flexibility change - save immediately
+  const handleFlexibilityChange = async (eventId, isFlexible) => {
+    setSavingEvents(prev => ({ ...prev, [eventId]: true }));
+    try {
+      await onClassify(eventId, { event_id: eventId, is_flexible: isFlexible });
+    } finally {
+      setSavingEvents(prev => ({ ...prev, [eventId]: false }));
     }
-    
-    await Promise.all(promises);
-    setPendingChanges({});
-    setSaving(false);
+  };
+  
+  // Handle enrichment change - save immediately
+  const handleEnrichmentChange = async (eventId, field, value, currentEnrichment) => {
+    setSavingEvents(prev => ({ ...prev, [eventId]: true }));
+    try {
+      await onEnrich(eventId, { ...currentEnrichment, [field]: value });
+    } finally {
+      setSavingEvents(prev => ({ ...prev, [eventId]: false }));
+    }
   };
 
   if (events.length === 0) {
@@ -126,7 +81,7 @@ const FlexibilityWizard = ({ events = [], onClassify, onEnrich }) => {
       <div className="flex items-center justify-between mb-3">
         <div>
           <div className="text-lg font-semibold">Event Setup</div>
-          <p className="text-xs text-slate-500">Mark events as movable or unmovable, and complete meeting details</p>
+          <p className="text-xs text-slate-500">Mark events as movable or unmovable, and complete meeting details. Changes save automatically.</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="text-sm text-slate-400">
@@ -135,15 +90,6 @@ const FlexibilityWizard = ({ events = [], onClassify, onEnrich }) => {
               <span className="text-recovery ml-2">✓</span>
             )}
           </div>
-          {hasPendingChanges && (
-            <button
-              onClick={handleSaveAll}
-              disabled={saving}
-              className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition disabled:opacity-50"
-            >
-              {saving ? "Saving..." : "Save All"}
-            </button>
-          )}
         </div>
       </div>
       
@@ -153,20 +99,11 @@ const FlexibilityWizard = ({ events = [], onClassify, onEnrich }) => {
         </div>
       )}
       
-      {hasPendingChanges && (
-        <div className="mb-4 p-3 bg-neutral/10 border border-neutral/30 rounded-lg text-sm text-neutral">
-          You have unsaved changes. Click "Save All" to apply them.
-        </div>
-      )}
-      
       <div className="space-y-3">
         {events.map((event) => {
-          const pending = pendingChanges[event.id];
-          const currentFlexibility = pending?.flexibility ?? event.is_flexible;
-          const pendingEnrichment = pending?.enrichment || {};
-          const currentParticipants = pendingEnrichment.participants ?? event.participants ?? 2;
-          const currentHasAgenda = pendingEnrichment.has_agenda ?? event.has_agenda ?? true;
-          const showEnrichment = needsEnrichment(event, pendingEnrichment);
+          const isSaving = savingEvents[event.id];
+          const currentParticipants = event.participants ?? 2;
+          const currentHasAgenda = event.has_agenda ?? true;
           
           return (
             <EventCard key={event.id} event={event}>
@@ -175,18 +112,18 @@ const FlexibilityWizard = ({ events = [], onClassify, onEnrich }) => {
                 <div className="flex gap-2 items-center flex-wrap">
                   <span className="text-xs text-slate-500 mr-2">Flexibility:</span>
                   <button
-                    className={getButtonStyle(event, false, pending?.flexibility, saving)}
-                    disabled={saving}
+                    className={getButtonStyle(event, false, isSaving)}
+                    disabled={isSaving}
                     onClick={() => handleFlexibilityChange(event.id, false)}
                   >
-                    Unmovable
+                    {isSaving ? "Saving..." : "Unmovable"}
                   </button>
                   <button
-                    className={getButtonStyle(event, true, pending?.flexibility, saving)}
-                    disabled={saving}
+                    className={getButtonStyle(event, true, isSaving)}
+                    disabled={isSaving}
                     onClick={() => handleFlexibilityChange(event.id, true)}
                   >
-                    Movable
+                    {isSaving ? "Saving..." : "Movable"}
                   </button>
                 </div>
                 
@@ -201,9 +138,15 @@ const FlexibilityWizard = ({ events = [], onClassify, onEnrich }) => {
                           type="number"
                           min="1"
                           max="100"
-                          value={currentParticipants}
-                          onChange={(e) => handleEnrichmentChange(event.id, "participants", parseInt(e.target.value, 10))}
-                          disabled={saving}
+                          key={`${event.id}-${event.participants}`}
+                          defaultValue={currentParticipants}
+                          onBlur={(e) => {
+                            const newValue = parseInt(e.target.value, 10);
+                            if (newValue !== event.participants && !isNaN(newValue)) {
+                              handleEnrichmentChange(event.id, "participants", newValue, { has_agenda: currentHasAgenda });
+                            }
+                          }}
+                          disabled={isSaving}
                           className="w-16 px-2 py-1 text-xs rounded bg-slate-900 border border-slate-700 focus:border-neutral focus:outline-none disabled:opacity-50"
                         />
                       </div>
@@ -212,8 +155,8 @@ const FlexibilityWizard = ({ events = [], onClassify, onEnrich }) => {
                         <label className="text-xs text-slate-500">Has Agenda:</label>
                         <button
                           type="button"
-                          disabled={saving}
-                          onClick={() => handleEnrichmentChange(event.id, "has_agenda", !currentHasAgenda)}
+                          disabled={isSaving}
+                          onClick={() => handleEnrichmentChange(event.id, "has_agenda", !currentHasAgenda, { participants: currentParticipants })}
                           className={`px-2 py-1 text-xs rounded transition disabled:opacity-50 ${
                             currentHasAgenda 
                               ? "bg-recovery/30 text-recovery" 

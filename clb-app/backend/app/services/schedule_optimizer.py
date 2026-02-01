@@ -493,15 +493,24 @@ def optimize_week(events: List[Event]) -> WeekOptimizationProposal:
     )
 
 
-def apply_week_optimization(events: List[Event], proposal: WeekOptimizationProposal) -> int:
+def apply_week_optimization(
+    events: List[Event], 
+    proposal: WeekOptimizationProposal,
+    selected_event_ids: Optional[List[str]] = None
+) -> int:
     """
     Apply the proposed schedule changes to the events.
+    If selected_event_ids is provided, only apply changes for those events.
     Returns the number of changes applied.
     """
     applied_count = 0
     
     for change in proposal.changes:
         if change.applied:
+            continue
+        
+        # Skip if we have a selection and this event is not selected
+        if selected_event_ids is not None and change.event_id not in selected_event_ids:
             continue
         
         for event in events:

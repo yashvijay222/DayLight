@@ -133,14 +133,27 @@ def get_week_optimization(request: Request) -> dict:
 
 
 @router.post("/optimize/week/apply")
-def apply_week_optimization_endpoint(request: Request) -> dict:
-    """Apply the last generated week optimization proposal."""
+def apply_week_optimization_endpoint(request: Request, payload: Optional[dict] = None) -> dict:
+    """
+    Apply the last generated week optimization proposal.
+    If payload contains 'selected_event_ids', only apply changes for those events.
+    Otherwise, apply all changes.
+    """
     proposal = getattr(request.app.state, "last_week_proposal", None)
     
     if not proposal:
         return {"status": "error", "message": "No optimization proposal found. Generate one first."}
     
-    applied_count = apply_week_optimization(request.app.state.events, proposal)
+    # Get selected event IDs from payload (if provided)
+    selected_event_ids = None
+    if payload and "selected_event_ids" in payload:
+        selected_event_ids = payload["selected_event_ids"]
+    
+    applied_count = apply_week_optimization(
+        request.app.state.events, 
+        proposal, 
+        selected_event_ids=selected_event_ids
+    )
     
     # Clear cached data
     request.app.state.last_suggestions = None
