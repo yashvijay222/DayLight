@@ -29,7 +29,7 @@ const Onboarding = () => {
       <div className="max-w-2xl w-full space-y-8">
         <div className="text-center">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-neutral via-recovery to-warning bg-clip-text text-transparent">
-            Cognitive Load Budgeting
+            DayLight
           </h1>
           <p className="text-slate-400 mt-3 text-lg">
             Track your cognitive budget, optimize your schedule, and prevent burnout.
