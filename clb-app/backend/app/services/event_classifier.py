@@ -1,10 +1,10 @@
 """
-Event classifier service using Gemini API (google.genai) to determine event types.
+Event classifier service using OpenAI API to determine event types.
 """
 import os
 from typing import List, Optional
 
-from google import genai
+from openai import OpenAI
 
 
 VALID_EVENT_TYPES = ["meeting", "deep_work", "recovery", "admin"]
@@ -16,7 +16,7 @@ def classify_event(
     description: Optional[str] = None
 ) -> str:
     """
-    Use Gemini to classify an event into one of the valid event types.
+    Use OpenAI to classify an event into one of the valid event types.
     
     Args:
         title: The event title
@@ -26,7 +26,7 @@ def classify_event(
     Returns:
         One of: "meeting", "deep_work", "recovery", "admin"
     """
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         # Fallback to simple heuristics if no API key
         return _classify_fallback(title, duration_minutes, description)
@@ -46,12 +46,14 @@ Categories:
 Respond with ONLY the category name (meeting, deep_work, recovery, or admin), nothing else."""
 
     try:
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
+        client = OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=20,
+            temperature=0,
         )
-        result = response.text.strip().lower()
+        result = response.choices[0].message.content.strip().lower()
         
         # Validate the response
         if result in VALID_EVENT_TYPES:
@@ -66,7 +68,7 @@ Respond with ONLY the category name (meeting, deep_work, recovery, or admin), no
         return "meeting"
         
     except Exception as e:
-        print(f"Gemini API error: {e}")
+        print(f"OpenAI API error: {e}")
         return _classify_fallback(title, duration_minutes, description)
 
 

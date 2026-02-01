@@ -22,7 +22,11 @@ const needsEnrichment = (event) => {
     return false;
   }
   // Check if any meeting-specific field is missing
-  return event.participants === null || event.has_agenda === null;
+  return (
+    event.participants === null ||
+    event.has_agenda === null ||
+    event.requires_tool_switch === null
+  );
 };
 
 const FlexibilityWizard = ({ events = [], onClassify, onEnrich }) => {
@@ -63,7 +67,7 @@ const FlexibilityWizard = ({ events = [], onClassify, onEnrich }) => {
       
       {needsEnrichmentCount > 0 && (
         <div className="mb-4 p-3 bg-warning/10 border border-warning/30 rounded-lg text-sm text-warning">
-          {needsEnrichmentCount} meeting(s) need additional details (participants, agenda)
+          {needsEnrichmentCount} meeting(s) need additional details (participants, agenda, tool switching)
         </div>
       )}
       

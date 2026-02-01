@@ -4,6 +4,9 @@ import { enrichEvent } from "../services/api";
 const MeetingEnrichForm = ({ event, onEnrich }) => {
   const [participants, setParticipants] = useState(event.participants || 2);
   const [hasAgenda, setHasAgenda] = useState(event.has_agenda ?? true);
+  const [requiresToolSwitch, setRequiresToolSwitch] = useState(
+    event.requires_tool_switch ?? false
+  );
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -13,6 +16,7 @@ const MeetingEnrichForm = ({ event, onEnrich }) => {
     const payload = {
       participants: parseInt(participants, 10),
       has_agenda: hasAgenda,
+      requires_tool_switch: requiresToolSwitch,
     };
     
     await enrichEvent(event.id, payload);
@@ -52,6 +56,21 @@ const MeetingEnrichForm = ({ event, onEnrich }) => {
             }`}
           >
             {hasAgenda ? "Yes" : "No"}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-slate-500">Tool switching:</label>
+          <button
+            type="button"
+            onClick={() => setRequiresToolSwitch(!requiresToolSwitch)}
+            className={`px-2 py-1 text-xs rounded transition ${
+              requiresToolSwitch
+                ? "bg-warning/30 text-warning"
+                : "bg-slate-700 text-slate-300"
+            }`}
+          >
+            {requiresToolSwitch ? "Yes" : "No"}
           </button>
         </div>
         
