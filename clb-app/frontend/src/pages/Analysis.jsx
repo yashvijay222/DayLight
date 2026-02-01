@@ -10,7 +10,8 @@ import {
   getRecoverySuggestions, 
   scheduleRecovery, 
   getWeekOptimization, 
-  applyWeekOptimization 
+  applyWeekOptimization,
+  enrichEvent 
 } from "../services/api";
 
 const Analysis = () => {
@@ -47,9 +48,11 @@ const Analysis = () => {
     setWeekProposal(null); // Clear proposal when flexibility changes
   };
 
-  const handleEnrich = async () => {
+  const handleEnrich = async (eventId, payload) => {
+    await enrichEvent(eventId, payload);
     await reloadEvents();
     await reloadOptimize();
+    setWeekProposal(null); // Clear proposal when enrichment changes
   };
 
   const handleApply = async (id) => {
