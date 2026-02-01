@@ -27,8 +27,8 @@ class Event(BaseModel):
     has_agenda: Optional[bool] = None
     requires_tool_switch: Optional[bool] = None
     event_type: Optional[str] = None  # Set by classifier
-    calculated_cost: Optional[float] = None
-    actual_cost: Optional[float] = None
+    calculated_cost: Optional[int] = None
+    actual_cost: Optional[int] = None
     is_flexible: Optional[bool] = None  # True = movable, False = unmovable
 
 
@@ -73,12 +73,12 @@ class CostBreakdown(BaseModel):
 
 class BudgetStatus(BaseModel):
     daily_budget: int
-    spent: float
-    remaining: float
+    spent: int
+    remaining: int
     is_overdrafted: bool
-    overdraft_amount: float
-    weekly_total: float
-    weekly_debt: float
+    overdraft_amount: int
+    weekly_total: int
+    weekly_debt: int
 
 
 class RecoveryActivity(BaseModel):
@@ -124,7 +124,7 @@ class PresageReading(BaseModel):
     focus_score: int
     stress_level: int
     timestamp: datetime
-    cognitive_cost_delta: float
+    cognitive_cost_delta: int
 
 
 class SageSession(BaseModel):
@@ -132,10 +132,9 @@ class SageSession(BaseModel):
     event_id: Optional[str] = None
     start_time: datetime
     readings: List[PresageReading] = []
-    estimated_cost: float
-    actual_cost: Optional[float] = None
-    debt_adjustment: Optional[float] = None
-    hourly_projection: Optional[float] = None
+    estimated_cost: int
+    actual_cost: Optional[int] = None
+    debt_adjustment: Optional[int] = None
 
 
 class TeamMetrics(BaseModel):

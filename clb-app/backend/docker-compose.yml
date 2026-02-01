@@ -46,8 +46,7 @@ services:
       - HEADLESS=true
       - VERBOSITY=1
       - PRESAGE_RECORDINGS_DIR=/app/recordings
-      - PRESAGE_VIDEO_FPS=${PRESAGE_VIDEO_FPS:-30}
-      - PRESAGE_SEGMENT_DURATION=${PRESAGE_SEGMENT_DURATION:-5}
+      - PRESAGE_VIDEO_FPS=30
     volumes:
       - presage-recordings:/app/recordings
     restart: unless-stopped

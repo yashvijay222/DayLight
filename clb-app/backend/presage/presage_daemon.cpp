@@ -43,9 +43,6 @@
 #include <vector>
 #include <set>
 #include <memory>
-#include <queue>
-#include <condition_variable>
-#include <functional>
 
 // Networking
 #include <sys/socket.h>
@@ -71,7 +68,6 @@ struct DaemonConfig {
     // Session recording configuration
     std::string recordings_dir = "/tmp/presage_recordings";
     int video_fps = 30;
-    int segment_duration_seconds = 5;  // Duration of each video segment for real-time processing
 };
 
 void signal_handler(int signal) {
@@ -127,12 +123,6 @@ DaemonConfig load_config() {
         config.video_fps = std::stoi(video_fps);
     }
     
-    // Segment duration for real-time processing
-    const char* segment_duration = std::getenv("PRESAGE_SEGMENT_DURATION");
-    if (segment_duration) {
-        config.segment_duration_seconds = std::stoi(segment_duration);
-    }
-    
     return config;
 }
 
@@ -149,21 +139,13 @@ std::string status_to_json(const std::string& status, const std::string& message
 }
 
 // ============================================================================
-// Session Recorder - Records video frames with real-time segment processing
+// Session Recorder - Records video frames to disk for SDK processing
 // ============================================================================
 
 class SessionRecorder {
 public:
-    // Segment processing callback type
-    using SegmentReadyCallback = std::function<void(const std::string& video_path, 
-                                                     const std::string& session_id,
-                                                     size_t segment_index)>;
-
-    SessionRecorder(const std::string& recordings_dir, int default_fps = 30, 
-                    int segment_duration_seconds = 5)
-        : recordings_dir_(recordings_dir), default_fps_(default_fps), 
-          segment_duration_seconds_(segment_duration_seconds), recording_(false),
-          total_frame_count_(0), current_segment_index_(0) {
+    SessionRecorder(const std::string& recordings_dir, int default_fps = 30)
+        : recordings_dir_(recordings_dir), default_fps_(default_fps), recording_(false) {
         // Create recordings directory if it doesn't exist
         createDirectory(recordings_dir_);
     }
@@ -173,15 +155,7 @@ public:
     }
     
     /**
-     * Set callback for when a segment is ready for processing.
-     * This enables real-time processing of video segments.
-     */
-    void setSegmentReadyCallback(SegmentReadyCallback callback) {
-        segment_ready_callback_ = callback;
-    }
-    
-    /**
-     * Start a new recording session with real-time segment processing.
+     * Start a new recording session.
      * 
      * @param session_id Unique session identifier (used in filename)
      * @param fps Frame rate for the video (default: 30)
@@ -202,28 +176,33 @@ public:
         session_width_ = width;
         session_height_ = height;
         
-        // Calculate frames per segment
-        frames_per_segment_ = session_fps_ * segment_duration_seconds_;
+        // Generate output filename with timestamp
+        auto now = std::chrono::system_clock::now();
+        auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+        
+        current_video_path_ = recordings_dir_ + "/" + session_id + "_" + std::to_string(timestamp) + ".avi";
+        
+        // If dimensions are provided, initialize writer immediately
+        if (width > 0 && height > 0) {
+            if (!initializeWriter(width, height)) {
+                return false;
+            }
+        }
+        // Otherwise, writer will be initialized on first frame
         
         recording_ = true;
-        total_frame_count_ = 0;
-        segment_frame_count_ = 0;
-        current_segment_index_ = 0;
-        
-        // Start first segment
-        startNewSegment();
+        frame_count_ = 0;
         
         LOG(INFO) << "Started recording session " << session_id 
                   << " at " << session_fps_ << " fps"
-                  << " with " << segment_duration_seconds_ << "s segments ("
-                  << frames_per_segment_ << " frames/segment)";
+                  << " -> " << current_video_path_;
         
         return true;
     }
     
     /**
      * Add a frame to the current recording.
-     * Automatically creates new segments and triggers processing.
+     * If no session is active, this is a no-op.
      * 
      * @param frame The frame to record (BGR format)
      * @return true if frame was recorded successfully
@@ -257,23 +236,15 @@ public:
         }
         
         writer_.write(frame_to_write);
-        total_frame_count_++;
-        segment_frame_count_++;
-        
-        // Check if segment is complete
-        if (segment_frame_count_ >= frames_per_segment_) {
-            finalizeCurrentSegment();
-            startNewSegment();
-        }
+        frame_count_++;
         
         return true;
     }
     
     /**
      * Stop the current recording session.
-     * Finalizes any remaining segment.
      * 
-     * @return Path to the final segment video file, or empty string if no recording was active
+     * @return Path to the recorded video file, or empty string if no recording was active
      */
     std::string stopRecording() {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -284,24 +255,22 @@ public:
         
         recording_ = false;
         
-        // Finalize current segment if it has frames
-        std::string final_path = "";
-        if (segment_frame_count_ > 0 && writer_.isOpened()) {
-            final_path = finalizeCurrentSegmentLocked();
+        if (writer_.isOpened()) {
+            writer_.release();
         }
         
+        std::string video_path = current_video_path_;
+        
         LOG(INFO) << "Stopped recording session " << current_session_id_ 
-                  << " - " << total_frame_count_ << " total frames"
-                  << " across " << (current_segment_index_ + 1) << " segments";
+                  << " - " << frame_count_ << " frames"
+                  << " -> " << video_path;
         
         // Reset state
         current_session_id_.clear();
         current_video_path_.clear();
-        total_frame_count_ = 0;
-        segment_frame_count_ = 0;
-        current_segment_index_ = 0;
+        frame_count_ = 0;
         
-        return final_path;
+        return video_path;
     }
     
     /**
@@ -329,11 +298,11 @@ public:
     }
     
     /**
-     * Get the total number of frames recorded in the current session.
+     * Get the number of frames recorded in the current session.
      */
     size_t getFrameCount() const {
         std::lock_guard<std::mutex> lock(mutex_);
-        return total_frame_count_;
+        return frame_count_;
     }
     
     /**
@@ -343,63 +312,7 @@ public:
         return recordings_dir_;
     }
     
-    /**
-     * Get segment duration in seconds.
-     */
-    int getSegmentDuration() const {
-        return segment_duration_seconds_;
-    }
-    
 private:
-    void startNewSegment() {
-        // Generate segment filename
-        auto now = std::chrono::system_clock::now();
-        auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
-        
-        current_video_path_ = recordings_dir_ + "/" + current_session_id_ + 
-                              "_seg" + std::to_string(current_segment_index_) + 
-                              "_" + std::to_string(timestamp) + ".avi";
-        
-        // Initialize writer if we have dimensions
-        if (session_width_ > 0 && session_height_ > 0) {
-            initializeWriter(session_width_, session_height_);
-        }
-        
-        segment_frame_count_ = 0;
-        
-        LOG(INFO) << "Started segment " << current_segment_index_ 
-                  << " for session " << current_session_id_;
-    }
-    
-    void finalizeCurrentSegment() {
-        // This version is called from addFrame, doesn't hold lock
-        finalizeCurrentSegmentLocked();
-        current_segment_index_++;
-    }
-    
-    std::string finalizeCurrentSegmentLocked() {
-        if (writer_.isOpened()) {
-            writer_.release();
-        }
-        
-        std::string completed_path = current_video_path_;
-        std::string session_id = current_session_id_;
-        size_t segment_idx = current_segment_index_;
-        size_t frames = segment_frame_count_;
-        
-        LOG(INFO) << "Completed segment " << segment_idx 
-                  << " with " << frames << " frames"
-                  << " -> " << completed_path;
-        
-        // Trigger callback for segment processing
-        // The callback just queues to SDK processor (very fast), so call directly
-        if (segment_ready_callback_ && frames > 0) {
-            segment_ready_callback_(completed_path, session_id, segment_idx);
-        }
-        
-        return completed_path;
-    }
-    
     bool initializeWriter(int width, int height) {
         session_width_ = width;
         session_height_ = height;
@@ -435,7 +348,6 @@ private:
     
     std::string recordings_dir_;
     int default_fps_;
-    int segment_duration_seconds_;
     
     mutable std::mutex mutex_;
     bool recording_;
@@ -444,13 +356,9 @@ private:
     int session_fps_;
     int session_width_;
     int session_height_;
-    size_t total_frame_count_;
-    size_t segment_frame_count_;
-    size_t frames_per_segment_;
-    size_t current_segment_index_;
+    size_t frame_count_;
     
     cv::VideoWriter writer_;
-    SegmentReadyCallback segment_ready_callback_;
 };
 
 // Global session recorder (initialized in main)
@@ -599,69 +507,17 @@ using namespace presage::smartspectra;
  * SDKVideoProcessor runs the SmartSpectra SDK on recorded video files
  * and broadcasts the resulting metrics via the MetricsServer.
  * 
- * Supports processing video segments in a queue for real-time metrics.
- * Processing happens in background threads so it doesn't block
+ * Processing happens in a background thread so it doesn't block
  * the video input server from accepting new sessions.
  */
 class SDKVideoProcessor {
 public:
-    struct ProcessingJob {
-        std::string video_path;
-        std::string session_id;
-        size_t segment_index;
-        bool is_segment;  // true for segments, false for final processing
-    };
-
     SDKVideoProcessor(const std::string& api_key, int frame_width, int frame_height)
         : api_key_(api_key), frame_width_(frame_width), frame_height_(frame_height),
-          processing_(false), shutdown_(false) {
-        // Start worker thread for processing queue
-        worker_thread_ = std::thread(&SDKVideoProcessor::processingWorker, this);
-    }
+          processing_(false) {}
     
     ~SDKVideoProcessor() {
-        shutdown();
-    }
-    
-    /**
-     * Shutdown the processor and wait for pending jobs.
-     */
-    void shutdown() {
-        {
-            std::lock_guard<std::mutex> lock(queue_mutex_);
-            shutdown_ = true;
-        }
-        queue_cv_.notify_all();
-        
-        if (worker_thread_.joinable()) {
-            worker_thread_.join();
-        }
-    }
-    
-    /**
-     * Queue a video segment for processing.
-     * Used for real-time segment processing during a session.
-     * 
-     * @param video_path Path to the segment video file
-     * @param session_id Session identifier
-     * @param segment_index Segment index within the session
-     */
-    void queueSegment(const std::string& video_path, const std::string& session_id, 
-                      size_t segment_index) {
-        std::lock_guard<std::mutex> lock(queue_mutex_);
-        
-        ProcessingJob job;
-        job.video_path = video_path;
-        job.session_id = session_id;
-        job.segment_index = segment_index;
-        job.is_segment = true;
-        
-        processing_queue_.push(job);
-        
-        LOG(INFO) << "Queued segment " << segment_index << " for session " << session_id
-                  << " (queue size: " << processing_queue_.size() << ")";
-        
-        queue_cv_.notify_one();
+        waitForCompletion();
     }
     
     /**
@@ -718,143 +574,6 @@ public:
     }
     
 private:
-    /**
-     * Worker thread that processes queued video segments.
-     */
-    void processingWorker() {
-        LOG(INFO) << "SDK processing worker started";
-        
-        while (true) {
-            ProcessingJob job;
-            
-            {
-                std::unique_lock<std::mutex> lock(queue_mutex_);
-                
-                // Wait for a job or shutdown
-                queue_cv_.wait(lock, [this]() {
-                    return shutdown_ || !processing_queue_.empty();
-                });
-                
-                if (shutdown_ && processing_queue_.empty()) {
-                    break;
-                }
-                
-                if (processing_queue_.empty()) {
-                    continue;
-                }
-                
-                job = processing_queue_.front();
-                processing_queue_.pop();
-            }
-            
-            // Process the segment
-            LOG(INFO) << "Processing segment " << job.segment_index 
-                      << " for session " << job.session_id;
-            
-            processVideoSegment(job.video_path, job.session_id, job.segment_index);
-        }
-        
-        LOG(INFO) << "SDK processing worker stopped";
-    }
-    
-    /**
-     * Process a video segment and emit metrics.
-     * Optimized for quick turnaround on short segments.
-     */
-    void processVideoSegment(const std::string& video_path, const std::string& session_id,
-                             size_t segment_index) {
-        LOG(INFO) << "SDK segment processing started for: " << video_path;
-        
-        // Broadcast processing start status
-        if (g_metrics_server) {
-            json status_msg;
-            status_msg["type"] = "sdk_status";
-            status_msg["status"] = "segment_processing";
-            status_msg["session_id"] = session_id;
-            status_msg["segment_index"] = segment_index;
-            status_msg["video_path"] = video_path;
-            status_msg["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count();
-            g_metrics_server->broadcast(status_msg.dump());
-        }
-        
-        try {
-            // Create SDK settings (reuse common setup)
-            container::settings::Settings<
-                container::settings::OperationMode::Continuous,
-                container::settings::IntegrationMode::Rest
-            > settings;
-            
-            // Configure video source for file input
-            settings.video_source.input_video_path = video_path;
-            settings.video_source.device_index = -1;  // Disable camera, use file
-            settings.video_source.capture_width_px = frame_width_;
-            settings.video_source.capture_height_px = frame_height_;
-            settings.video_source.codec = presage::camera::CaptureCodec::MJPG;
-            settings.video_source.auto_lock = true;
-            
-            // SDK configuration
-            settings.headless = true;  // No GUI
-            settings.enable_edge_metrics = true;
-            settings.verbosity_level = 0;  // Reduce logging for segments
-            settings.continuous.preprocessed_data_buffer_duration_s = 0.5;
-            settings.integration.api_key = api_key_;
-            
-            // Create SDK container
-            auto container = std::make_unique<container::CpuContinuousRestForegroundContainer>(settings);
-            
-            // Track metrics count for this segment
-            size_t metrics_count = 0;
-            
-            // Register metrics callback
-            auto metrics_status = container->SetOnCoreMetricsOutput(
-                [this, session_id, segment_index, &metrics_count](
-                    const presage::physiology::MetricsBuffer& metrics, int64_t timestamp) {
-                    // Convert SDK metrics to our JSON format and broadcast
-                    std::string json_str = sdkMetricsToJson(metrics, timestamp, session_id);
-                    
-                    // Add segment info to the JSON
-                    json j = json::parse(json_str);
-                    j["segment_index"] = segment_index;
-                    j["realtime"] = true;  // Flag to indicate this is real-time data
-                    
-                    if (g_metrics_server) {
-                        g_metrics_server->broadcast(j.dump());
-                    }
-                    
-                    metrics_count++;
-                    
-                    return absl::OkStatus();
-                }
-            );
-            
-            if (!metrics_status.ok()) {
-                LOG(ERROR) << "Failed to set SDK metrics callback: " << metrics_status.message();
-                return;
-            }
-            
-            // Initialize and run SDK (blocking until video ends)
-            if (auto init_status = container->Initialize(); !init_status.ok()) {
-                LOG(ERROR) << "Failed to initialize SDK for segment: " << init_status.message();
-                return;
-            }
-            
-            if (auto run_status = container->Run(); !run_status.ok()) {
-                if (!absl::IsCancelled(run_status)) {
-                    LOG(ERROR) << "SDK segment processing error: " << run_status.message();
-                }
-            }
-            
-            LOG(INFO) << "SDK segment " << segment_index << " completed"
-                      << " - " << metrics_count << " metrics generated";
-            
-            // Optionally delete processed segment file to save space
-            // std::remove(video_path.c_str());
-            
-        } catch (const std::exception& e) {
-            LOG(ERROR) << "SDK segment processing exception: " << e.what();
-        }
-    }
     void processVideo(const std::string& video_path, const std::string& session_id) {
         LOG(INFO) << "SDK processing started for: " << video_path;
         
@@ -1144,15 +863,8 @@ private:
     int frame_height_;
     
     std::atomic<bool> processing_;
-    std::atomic<bool> shutdown_;
     std::string current_session_id_;
     std::thread processing_thread_;
-    
-    // Queue for segment processing
-    std::queue<ProcessingJob> processing_queue_;
-    std::mutex queue_mutex_;
-    std::condition_variable queue_cv_;
-    std::thread worker_thread_;
 };
 
 // TCP Server for video input
@@ -1291,16 +1003,24 @@ private:
             
         }
         
-        // If session was active when client disconnected, stop recording
-        // The final segment will be automatically queued for processing
+        // If session was active when client disconnected, stop recording and trigger SDK
         if (g_session_recorder && g_session_recorder->isRecording()) {
             std::string session_id = g_session_recorder->getCurrentSessionId();
             size_t frame_count = g_session_recorder->getFrameCount();
-            std::string final_segment = g_session_recorder->stopRecording();
+            std::string video_path = g_session_recorder->stopRecording();
             
-            LOG(INFO) << "Video client disconnected - stopped recording session " << session_id
-                      << " (" << frame_count << " total frames)"
-                      << " - final segment queued for processing";
+            LOG(INFO) << "Video client disconnected - stopped recording: " << video_path 
+                      << " (" << frame_count << " frames)";
+            
+            // Trigger SDK processing for the incomplete session
+            if (g_sdk_processor && frame_count > 0) {
+                bool started = g_sdk_processor->processVideoAsync(video_path, session_id);
+                if (started) {
+                    LOG(INFO) << "Started SDK processing for interrupted session " << session_id;
+                } else {
+                    LOG(WARNING) << "Could not start SDK processing - processor busy";
+                }
+            }
         }
     }
     
@@ -1383,7 +1103,7 @@ private:
     
     /**
      * Handle session_end control message.
-     * Stops recording - final segment will be automatically queued for processing.
+     * Stops recording and returns the video file path.
      */
     void handleSessionEnd(const json& msg, int client_fd) {
         if (!g_session_recorder) {
@@ -1410,31 +1130,32 @@ private:
             return;
         }
         
-        // Stop recording - this finalizes the last segment and queues it for processing
+        // Stop recording
         size_t frame_count = g_session_recorder->getFrameCount();
-        std::string final_segment_path = g_session_recorder->stopRecording();
+        std::string video_path = g_session_recorder->stopRecording();
         
         LOG(INFO) << "Ended session: " << current_id 
-                  << " (" << frame_count << " total frames)"
-                  << " - final segment queued for processing";
+                  << " (" << frame_count << " frames) -> " << video_path;
         
         json response;
         response["type"] = "session_ended";
         response["session_id"] = current_id;
-        response["final_segment"] = final_segment_path;
+        response["video_path"] = video_path;
         response["frame_count"] = frame_count;
         
-        // Segments are processed via callback - no need to manually trigger
-        if (frame_count > 0) {
-            response["sdk_processing"] = "segment_queued";
-        } else {
+        // Trigger SDK processing in background thread
+        bool sdk_started = false;
+        if (g_sdk_processor && frame_count > 0) {
+            sdk_started = g_sdk_processor->processVideoAsync(video_path, current_id);
+            response["sdk_processing"] = sdk_started ? "started" : "busy";
+            
+            if (!sdk_started) {
+                LOG(WARNING) << "Could not start SDK processing - processor busy";
+            }
+        } else if (frame_count == 0) {
             response["sdk_processing"] = "skipped";
             LOG(INFO) << "Skipping SDK processing - no frames recorded";
-        }
-        
-        // For backwards compatibility, we still have this block but it's not used
-        // in the new segment-based architecture
-        if (false) {  // Disabled - segments handled via callback
+        } else {
             response["sdk_processing"] = "unavailable";
             LOG(WARNING) << "SDK processor not initialized";
         }
@@ -1495,9 +1216,12 @@ int main(int argc, char** argv) {
     LOG(INFO) << "  Headless mode: " << (config.headless ? "true" : "false");
     LOG(INFO) << "  Recordings dir: " << config.recordings_dir;
     LOG(INFO) << "  Video FPS: " << config.video_fps;
-    LOG(INFO) << "  Segment duration: " << config.segment_duration_seconds << "s";
     
-    // Start metrics server first (needed for SDK callbacks)
+    // Initialize session recorder
+    g_session_recorder = std::make_unique<SessionRecorder>(config.recordings_dir, config.video_fps);
+    LOG(INFO) << "Session recorder initialized - recordings will be saved to " << config.recordings_dir;
+    
+    // Start servers
     MetricsServer metrics_server(config.metrics_output_port);
     if (!metrics_server.start()) {
         LOG(FATAL) << "Failed to start metrics server";
@@ -1514,22 +1238,6 @@ int main(int argc, char** argv) {
     if (config.api_key.empty()) {
         LOG(WARNING) << "No API key configured - SDK processing may be limited";
     }
-    
-    // Initialize session recorder with segment callback for real-time processing
-    // Segment duration is configurable via PRESAGE_SEGMENT_DURATION env var
-    g_session_recorder = std::make_unique<SessionRecorder>(
-        config.recordings_dir, config.video_fps, config.segment_duration_seconds);
-    
-    // Wire up segment callback to SDK processor
-    g_session_recorder->setSegmentReadyCallback(
-        [](const std::string& video_path, const std::string& session_id, size_t segment_index) {
-            if (g_sdk_processor) {
-                g_sdk_processor->queueSegment(video_path, session_id, segment_index);
-            }
-        });
-    
-    LOG(INFO) << "Session recorder initialized with " << config.segment_duration_seconds 
-              << "s segments - recordings will be saved to " << config.recordings_dir;
     
     VideoInputServer video_server(config.video_input_port);
     if (!video_server.start()) {
@@ -1549,9 +1257,9 @@ int main(int argc, char** argv) {
     }
     
     // Wait for any ongoing SDK processing to complete
-    if (g_sdk_processor) {
+    if (g_sdk_processor && g_sdk_processor->isProcessing()) {
         LOG(INFO) << "Waiting for SDK processing to complete...";
-        g_sdk_processor->shutdown();  // This will wait for queue to drain
+        g_sdk_processor->waitForCompletion();
     }
     
     // Send shutdown notification
