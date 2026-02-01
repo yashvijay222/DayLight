@@ -22,6 +22,7 @@ export const pushToCalendar = () => handle(api.post("/calendar/push"));
 export const fetchEvents = () => handle(api.get("/events"));
 export const addEvent = (event) => handle(api.post("/events", event));
 export const deleteEvent = (id) => handle(api.delete(`/events/${id}`));
+export const updateEvent = (id, payload) => handle(api.patch(`/events/${id}`, payload));
 export const updateFlexibility = (id, payload) =>
   handle(api.patch(`/events/${id}/flexibility`, payload));
 export const enrichEvent = (id, payload) =>
@@ -39,7 +40,8 @@ export const applySuggestion = (suggestionId) =>
 export const applyAllSuggestions = (ids) =>
   handle(api.post("/optimize/apply-all", { ids }));
 export const getWeekOptimization = () => handle(api.get("/optimize/week"));
-export const applyWeekOptimization = () => handle(api.post("/optimize/week/apply"));
+export const applyWeekOptimization = (selectedEventIds = null) => 
+  handle(api.post("/optimize/week/apply", selectedEventIds ? { selected_event_ids: selectedEventIds } : {}));
 
 export const getRecoverySuggestions = () => handle(api.get("/recovery/suggestions"));
 export const scheduleRecovery = (payload) => handle(api.post("/recovery/schedule", payload));

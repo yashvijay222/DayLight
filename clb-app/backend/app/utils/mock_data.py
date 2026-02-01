@@ -1,13 +1,22 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 from uuid import uuid4
 
 from app.models import Event, TeamMetrics
 
+# EST timezone (UTC-5)
+EST = timezone(timedelta(hours=-5))
+
+
+def _now_est() -> datetime:
+    """Get current time in EST as naive datetime."""
+    return datetime.now(EST).replace(tzinfo=None)
+
 
 def _start_of_week(dt: datetime) -> datetime:
-    """Get Monday 9am of the current week."""
-    start = dt - timedelta(days=dt.weekday())
+    """Get Sunday 9am of the current week (Sun-Sat week for your 7-day view)."""
+    days_since_sunday = (dt.weekday() + 1) % 7
+    start = dt - timedelta(days=days_since_sunday)
     return start.replace(hour=9, minute=0, second=0, microsecond=0)
 
 
@@ -17,46 +26,47 @@ def generate_mock_week() -> List[Event]:
     
     These events only have title, duration, and description.
     event_type is None (to be classified by AI).
-    participants/has_agenda/requires_tool_switch are None (to be enriched by user for meetings).
+    participants/has_agenda are None (to be enriched by user for meetings).
     """
-    base = _start_of_week(datetime.utcnow())
+    base = _start_of_week(_now_est())
     events: List[Event] = []
 
     # Fixed 5 events: (title, duration_minutes, description, day_offset, start_hour)
+    # day_offset: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
     templates = [
         (
             "Weekly Team Standup",
             30,
             "Regular team sync to discuss blockers and progress",
-            0,  # Monday
+            1,  # Monday
             9,
         ),
         (
             "Deep Focus: Feature Development",
             120,
             "Uninterrupted coding time for the new dashboard feature",
-            0,  # Monday
+            1,  # Monday
             14,
         ),
         (
             "Client Strategy Call",
             60,
             "Quarterly review call with the client stakeholders",
-            1,  # Tuesday
+            2,  # Tuesday
             10,
         ),
         (
             "Lunch Walk",
             30,
             "Quick walk around the block to recharge",
-            2,  # Wednesday
+            3,  # Wednesday
             12,
         ),
         (
             "Sprint Planning",
             90,
             "Planning session for the upcoming two-week sprint",
-            3,  # Thursday
+            4,  # Thursday
             9,
         ),
     ]
@@ -74,7 +84,6 @@ def generate_mock_week() -> List[Event]:
             # These fields are None - to be classified/enriched later
             participants=None,
             has_agenda=None,
-            requires_tool_switch=None,
             event_type=None,  # AI will classify this
             calculated_cost=None,
             is_flexible=None,

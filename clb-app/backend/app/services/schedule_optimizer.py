@@ -165,6 +165,27 @@ def _get_week_dates(events: List[Event]) -> List[datetime]:
     ]
 
 
+def _align_to_allowed_minutes(dt: datetime, allowed_minutes: List[int]) -> datetime:
+    """Round up to the next allowed minute bucket (e.g., 0/15/30/45)."""
+    allowed = sorted(set(allowed_minutes))
+    minute = dt.minute
+    for m in allowed:
+        if m >= minute:
+            return dt.replace(minute=m, second=0, microsecond=0)
+    # Move to next hour if no allowed minute remains
+    next_hour = (dt + timedelta(hours=1)).replace(minute=allowed[0], second=0, microsecond=0)
+    return next_hour
+
+
+def _get_allowed_minutes(event: Event) -> List[int]:
+    """Use 15-min grid, plus original minute if event was already off-grid."""
+    allowed = {0, 15, 30, 45}
+    original_minute = event.start_time.minute if event.start_time else None
+    if original_minute is not None and original_minute not in allowed:
+        allowed.add(original_minute)
+    return sorted(allowed)
+
+
 def _find_earliest_slot(
     day_events: List[Event],
     duration_minutes: int,
@@ -172,6 +193,7 @@ def _find_earliest_slot(
     work_start: int = 9,
     work_end: int = 17,
     prefer_gap: bool = True,
+    allowed_minutes: Optional[List[int]] = None,
 ) -> Optional[datetime]:
     """
     Find the earliest non-overlapping slot on a given day.
@@ -190,8 +212,9 @@ def _find_earliest_slot(
     sorted_events = sorted(day_events, key=lambda e: e.start_time)
     end_of_day = day_date.replace(hour=work_end, minute=0, second=0, microsecond=0)
     
-    # Required gap to avoid proximity penalty (1 hour + 1 minute buffer)
-    preferred_gap = PROXIMITY_THRESHOLD_MINUTES + 1 if prefer_gap else 0
+    allowed_minutes = allowed_minutes or [0, 15, 30, 45]
+    # Required gap to avoid proximity penalty (1 hour)
+    preferred_gap = PROXIMITY_THRESHOLD_MINUTES if prefer_gap else 0
     
     # PASS 1: Try to find a slot with preferred gap (1 hour after previous event)
     if prefer_gap and sorted_events:
@@ -203,6 +226,8 @@ def _find_earliest_slot(
                 # Need 1-hour gap from previous event's end
                 earliest_with_gap = sorted_events[i-1].end_time + timedelta(minutes=preferred_gap)
                 cursor = max(cursor, earliest_with_gap)
+            # Align to allowed minute buckets
+            cursor = _align_to_allowed_minutes(cursor, allowed_minutes)
             
             # Check if there's room before this event (with gap before it too)
             latest_start = event.start_time - timedelta(minutes=preferred_gap + duration_minutes)
@@ -219,6 +244,7 @@ def _find_earliest_slot(
             cursor = sorted_events[-1].end_time + timedelta(minutes=preferred_gap)
         else:
             cursor = day_date.replace(hour=work_start, minute=0, second=0, microsecond=0)
+        cursor = _align_to_allowed_minutes(cursor, allowed_minutes)
         
         remaining = (end_of_day - cursor).total_seconds() / 60
         if remaining >= duration_minutes:
@@ -231,13 +257,13 @@ def _find_earliest_slot(
         gap_before = (event.start_time - cursor).total_seconds() / 60
         
         if gap_before >= duration_minutes:
-            return cursor
+            return _align_to_allowed_minutes(cursor, allowed_minutes)
         
         cursor = max(cursor, event.end_time)
     
     remaining = (end_of_day - cursor).total_seconds() / 60
     if remaining >= duration_minutes:
-        return cursor
+        return _align_to_allowed_minutes(cursor, allowed_minutes)
     
     return None  # No slot found
 
@@ -259,7 +285,8 @@ def _score_day_for_event(
     
     Returns: ((exceeds_budget_flag, daily_cost, finish_score, day_key), slot)
     """
-    slot = _find_earliest_slot(day_events, event.duration_minutes, day_date)
+    allowed_minutes = _get_allowed_minutes(event)
+    slot = _find_earliest_slot(day_events, event.duration_minutes, day_date, allowed_minutes=allowed_minutes)
     day_key = day_date.strftime("%Y-%m-%d")
     
     if slot is None:
@@ -407,7 +434,14 @@ def optimize_week(events: List[Event]) -> WeekOptimizationProposal:
                 day_events = day_schedules[day_key]
                 
                 # Try extended hours with gap preference (internal fallback to tight packing)
-                slot = _find_earliest_slot(day_events, duration, date, work_end=19, prefer_gap=True)
+                slot = _find_earliest_slot(
+                    day_events,
+                    duration,
+                    date,
+                    work_end=19,
+                    prefer_gap=True,
+                    allowed_minutes=_get_allowed_minutes(event),
+                )
                 if slot is not None:
                     candidate = _clone_event(
                         event,
@@ -443,7 +477,6 @@ def optimize_week(events: List[Event]) -> WeekOptimizationProposal:
                 duration_minutes=duration,
                 participants=event.participants,
                 has_agenda=event.has_agenda,
-                requires_tool_switch=event.requires_tool_switch,
                 event_type=event.event_type,
                 is_flexible=event.is_flexible,
             )
@@ -494,15 +527,24 @@ def optimize_week(events: List[Event]) -> WeekOptimizationProposal:
     )
 
 
-def apply_week_optimization(events: List[Event], proposal: WeekOptimizationProposal) -> int:
+def apply_week_optimization(
+    events: List[Event], 
+    proposal: WeekOptimizationProposal,
+    selected_event_ids: Optional[List[str]] = None
+) -> int:
     """
     Apply the proposed schedule changes to the events.
+    If selected_event_ids is provided, only apply changes for those events.
     Returns the number of changes applied.
     """
     applied_count = 0
     
     for change in proposal.changes:
         if change.applied:
+            continue
+        
+        # Skip if we have a selection and this event is not selected
+        if selected_event_ids is not None and change.event_id not in selected_event_ids:
             continue
         
         for event in events:
