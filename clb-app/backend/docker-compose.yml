@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # Python FastAPI Backend Service
+  backend:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: daylight-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:8000/api/calendar/callback}
+      - USE_MOCK_DATA=${USE_MOCK_DATA:-true}
+      - PRESAGE_DAEMON_HOST=presage
+      - PRESAGE_DAEMON_PORT=9002
+      - PRESAGE_VIDEO_PORT=9001
+      - SMARTSPECTRA_API_KEY=${SMARTSPECTRA_API_KEY}
+    depends_on:
+      - presage
+    restart: unless-stopped
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Presage C++ Daemon Service (SmartSpectra SDK)
+  # Internal only - no external port exposure
+  # Note: SmartSpectra SDK only available for amd64
+  presage:
+    platform: linux/amd64
+    build:
+      context: ./presage
+      dockerfile: Dockerfile
+    container_name: presage-daemon
+    environment:
+      - SMARTSPECTRA_API_KEY=${SMARTSPECTRA_API_KEY}
+      - VIDEO_INPUT_PORT=9001
+      - METRICS_OUTPUT_PORT=9002
+      - HEADLESS=true
+      - VERBOSITY=1
+      - PRESAGE_RECORDINGS_DIR=/app/recordings
+      - PRESAGE_VIDEO_FPS=30
+    volumes:
+      - presage-recordings:/app/recordings
+    restart: unless-stopped
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9002 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  presage-recordings:
+    driver: local

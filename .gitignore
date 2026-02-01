@@ -1,0 +1,8 @@
+__pycache__/
+node_modules/
+.env
+clb-app/backend/.env
+clb-app/backend/presage/build/
+.cursor/
+.vscode/
+clb-app/backend/presage/sample/
