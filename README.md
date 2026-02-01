@@ -92,7 +92,7 @@ When you're overdrafted, DayLight suggests recovery activities:
 ### Backend
 - **FastAPI** (Python)
 - **WebSocket** for real-time communication
-- **OpenAI API** for event classification
+- **Gemini API** for event classification
 - **Google Calendar API** for calendar sync
 
 ### Vital Signs Processing
