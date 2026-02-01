@@ -3,7 +3,17 @@ import React from "react";
 const DAILY_BUDGET = 20;
 
 const getHeatColor = (total) => {
-  if (total <= 0) return "bg-slate-800";
+  // Negative values (recovery/surplus) - show green
+  if (total < 0) {
+    if (total <= -10) return "bg-emerald-600/80"; // Very good recovery
+    if (total <= -5) return "bg-emerald-500/60";  // Good recovery
+    return "bg-emerald-400/40";                    // Light recovery
+  }
+  
+  // Zero - neutral
+  if (total === 0) return "bg-slate-800";
+  
+  // Positive values - scale from green to red based on budget ratio
   const ratio = total / DAILY_BUDGET;
   if (ratio <= 0.5) return "bg-recovery/30";
   if (ratio <= 0.8) return "bg-recovery/60";
@@ -64,6 +74,10 @@ const WeeklyHeatmap = ({ dailyTotals = {}, weekStart = null }) => {
         })}
       </div>
       <div className="mt-3 flex items-center justify-center gap-4 text-xs text-slate-400">
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded bg-emerald-500/60"></div>
+          <span>Recovery</span>
+        </div>
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded bg-recovery/60"></div>
           <span>Good</span>

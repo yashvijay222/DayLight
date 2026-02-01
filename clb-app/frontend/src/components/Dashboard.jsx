@@ -68,6 +68,12 @@ const Dashboard = () => {
     await loadWeekly();
   };
 
+  const handleEventsChange = async () => {
+    await reloadEvents();
+    await reloadBudget();
+    await loadWeekly();
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -80,7 +86,7 @@ const Dashboard = () => {
         <SageMode events={events} onSessionEnd={handleSessionEnd} />
       </div>
 
-      <CalendarWeekView events={events} />
+      <CalendarWeekView events={events} onEventsChange={handleEventsChange} />
 
       {weeklyDebt > 0 && (
         <OptimizationPanel

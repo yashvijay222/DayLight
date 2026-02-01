@@ -443,7 +443,6 @@ def optimize_week(events: List[Event]) -> WeekOptimizationProposal:
                 duration_minutes=duration,
                 participants=event.participants,
                 has_agenda=event.has_agenda,
-                requires_tool_switch=event.requires_tool_switch,
                 event_type=event.event_type,
                 is_flexible=event.is_flexible,
             )

@@ -22,6 +22,7 @@ export const pushToCalendar = () => handle(api.post("/calendar/push"));
 export const fetchEvents = () => handle(api.get("/events"));
 export const addEvent = (event) => handle(api.post("/events", event));
 export const deleteEvent = (id) => handle(api.delete(`/events/${id}`));
+export const updateEvent = (id, payload) => handle(api.patch(`/events/${id}`, payload));
 export const updateFlexibility = (id, payload) =>
   handle(api.patch(`/events/${id}/flexibility`, payload));
 export const enrichEvent = (id, payload) =>

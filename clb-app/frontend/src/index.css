@@ -29,3 +29,39 @@ body {
 .week-view-scroll::-webkit-scrollbar-thumb:hover {
   background: rgb(100 116 139);
 }
+
+/* Dark theme checkboxes */
+.event-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid rgb(71 85 105);
+  border-radius: 3px;
+  background-color: rgb(51 65 85);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+.event-checkbox:checked {
+  background-color: rgb(16 185 129);
+  border-color: rgb(16 185 129);
+}
+.event-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.event-checkbox:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.event-checkbox:hover:not(:disabled) {
+  border-color: rgb(100 116 139);
+}

@@ -1,8 +1,16 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 from uuid import uuid4
 
 from app.models import Event, TeamMetrics
+
+# EST timezone (UTC-5)
+EST = timezone(timedelta(hours=-5))
+
+
+def _now_est() -> datetime:
+    """Get current time in EST as naive datetime."""
+    return datetime.now(EST).replace(tzinfo=None)
 
 
 def _start_of_week(dt: datetime) -> datetime:
@@ -18,9 +26,9 @@ def generate_mock_week() -> List[Event]:
     
     These events only have title, duration, and description.
     event_type is None (to be classified by AI).
-    participants/has_agenda/requires_tool_switch are None (to be enriched by user for meetings).
+    participants/has_agenda are None (to be enriched by user for meetings).
     """
-    base = _start_of_week(datetime.utcnow())
+    base = _start_of_week(_now_est())
     events: List[Event] = []
 
     # Fixed 5 events: (title, duration_minutes, description, day_offset, start_hour)
@@ -76,7 +84,6 @@ def generate_mock_week() -> List[Event]:
             # These fields are None - to be classified/enriched later
             participants=None,
             has_agenda=None,
-            requires_tool_switch=None,
             event_type=None,  # AI will classify this
             calculated_cost=None,
             is_flexible=None,

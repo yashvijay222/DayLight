@@ -28,7 +28,7 @@ const Analysis = () => {
   // Check if any meetings need enrichment
   const needsEnrichment = events.some(e => 
     (e.event_type === "meeting" || e.event_type === "admin") && 
-    (e.participants === null || e.has_agenda === null || e.requires_tool_switch === null)
+    (e.participants === null || e.has_agenda === null)
   );
 
   const loadRecovery = useCallback(async () => {
