@@ -71,7 +71,6 @@ def fetch_events(access_token: Optional[str], start_date: datetime, end_date: da
                     # These fields are intentionally None - to be classified/enriched later
                     participants=None,
                     has_agenda=None,
-                    requires_tool_switch=None,
                     event_type=None,
                     is_flexible=None,
                 )
