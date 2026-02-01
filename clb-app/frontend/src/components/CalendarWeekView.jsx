@@ -1,17 +1,22 @@
-import React from "react";
+import React, { useState } from "react";
+import CostBreakdownModal from "./CostBreakdownModal";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+const DAILY_BUDGET = 20;
 
 const getEventTypeColor = (type) => {
   switch (type) {
     case "recovery": return "border-l-2 border-recovery";
     case "deep_work": return "border-l-2 border-neutral";
     case "meeting": return "border-l-2 border-warning";
+    case "admin": return "border-l-2 border-warning";
     default: return "border-l-2 border-slate-600";
   }
 };
 
 const CalendarWeekView = ({ events = [] }) => {
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  
   // Group events by weekday
   const grouped = events.reduce((acc, event) => {
     const day = new Date(event.start_time).toLocaleDateString("en-US", {
@@ -39,6 +44,7 @@ const CalendarWeekView = ({ events = [] }) => {
   return (
     <div className="card">
       <div className="text-lg font-semibold mb-4">Week View</div>
+      <p className="text-xs text-slate-500 mb-3">Click on an event to see cost breakdown</p>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
         {WEEKDAYS.map((day) => {
           const items = grouped[day] || [];
@@ -49,7 +55,7 @@ const CalendarWeekView = ({ events = [] }) => {
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm font-medium text-slate-300">{day}</div>
                 {items.length > 0 && (
-                  <div className={`text-xs font-semibold ${totalCost > 32 ? "text-debt" : "text-slate-400"}`}>
+                  <div className={`text-xs font-semibold ${totalCost > DAILY_BUDGET ? "text-debt" : "text-slate-400"}`}>
                     {totalCost} pts
                   </div>
                 )}
@@ -61,7 +67,8 @@ const CalendarWeekView = ({ events = [] }) => {
                   items.map((event) => (
                     <div 
                       key={event.id} 
-                      className={`text-xs rounded-lg bg-slate-900 p-2 ${getEventTypeColor(event.event_type)}`}
+                      className={`text-xs rounded-lg bg-slate-900 p-2 cursor-pointer hover:bg-slate-800 transition ${getEventTypeColor(event.event_type)}`}
+                      onClick={() => setSelectedEvent(event)}
                     >
                       <div className="font-medium truncate">{event.title}</div>
                       <div className="text-slate-500 flex justify-between mt-0.5">
@@ -76,6 +83,13 @@ const CalendarWeekView = ({ events = [] }) => {
           );
         })}
       </div>
+      
+      {selectedEvent && (
+        <CostBreakdownModal 
+          event={selectedEvent} 
+          onClose={() => setSelectedEvent(null)} 
+        />
+      )}
     </div>
   );
 };

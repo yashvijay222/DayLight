@@ -1,6 +1,6 @@
 import React from "react";
 
-const DAILY_BUDGET = 32;
+const DAILY_BUDGET = 20;
 
 const getHeatColor = (total) => {
   if (total <= 0) return "bg-slate-800";

@@ -12,9 +12,35 @@ from app.services.google_calendar import (
     update_event,
     use_mock_data,
 )
-from app.services.cognitive_calculator import calculate_event_cost
+from app.services.cognitive_calculator import calculate_events_with_proximity
+from app.services.event_classifier import classify_event
 
 router = APIRouter()
+
+
+def _classify_and_prepare_events(events_list: List[Event]) -> List[Event]:
+    """Classify events using AI and calculate initial costs."""
+    for event in events_list:
+        if event.event_type is None:
+            # Classify using AI (or fallback heuristics)
+            event.event_type = classify_event(
+                title=event.title,
+                duration_minutes=event.duration_minutes,
+                description=event.description,
+            )
+            
+            # For non-meeting types, set default values for meeting-specific fields
+            if event.event_type in ("recovery", "deep_work"):
+                if event.participants is None:
+                    event.participants = 1
+                if event.has_agenda is None:
+                    event.has_agenda = True
+                if event.requires_tool_switch is None:
+                    event.requires_tool_switch = False
+    
+    # Calculate costs with proximity awareness
+    calculate_events_with_proximity(events_list)
+    return events_list
 
 
 @router.get("/calendar/auth-url")
@@ -32,12 +58,33 @@ def calendar_callback(request: Request, payload: dict) -> dict:
 
 @router.post("/calendar/sync", response_model=List[Event])
 def sync_calendar(request: Request) -> List[Event]:
+    """
+    Sync events from Google Calendar.
+    Events are classified by AI and costs are calculated with proximity awareness.
+    Meeting events will need user enrichment (participants, has_agenda).
+    """
     token = request.app.state.oauth_tokens.get("google", {}).get("access_token")
     start = datetime.utcnow()
     end = start + timedelta(days=7)
+    
+    # Fetch raw events
     events = fetch_events(token, start, end)
+    
+    # Clear meeting-specific fields so they need to be enriched
     for event in events:
-        event.calculated_cost = calculate_event_cost(event)
+        event.participants = None
+        event.has_agenda = None
+        event.requires_tool_switch = None
+        event.event_type = None
+        event.is_flexible = None
+    
+    # Classify and prepare events
+    events = _classify_and_prepare_events(events)
+    
+    # Clear cached optimization data
+    request.app.state.last_suggestions = None
+    request.app.state.last_week_proposal = None
+    
     request.app.state.events = events
     return events
 
