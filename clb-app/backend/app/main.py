@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from app.routers import baseline, budget, calendar, events, optimize, presage, recovery, team
+from app.routers import baseline, budget, calendar, camera, events, optimize, presage, recovery, team
 from app.routers.presage import get_presage_client
 from app.utils.mock_data import generate_mock_week, generate_team_metrics
 from app.services.event_classifier import classify_event
@@ -97,6 +97,7 @@ app.add_middleware(
 
 app.include_router(baseline.router, prefix="/api", tags=["baseline"])
 app.include_router(calendar.router, prefix="/api", tags=["calendar"])
+app.include_router(camera.router, prefix="/api", tags=["camera"])
 app.include_router(events.router, prefix="/api", tags=["events"])
 app.include_router(budget.router, prefix="/api", tags=["budget"])
 app.include_router(optimize.router, prefix="/api", tags=["optimize"])
