@@ -130,6 +130,7 @@ class WeekOptimizationProposal(BaseModel):
 
 
 class PresageReading(BaseModel):
+    pulse_rate: Optional[float] = None
     hrv: int
     breathing_rate: int
     focus_score: int

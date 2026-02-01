@@ -100,3 +100,8 @@ smartspectra_output/
 # Misc
 coverage/
 *.bak
+*.tmp
+.cache/
+clb-app/backend/.env
+clb-app/backend/presage/sample/
+.cursor/plans
