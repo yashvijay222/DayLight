@@ -6,7 +6,6 @@ import OptimizationPanel from "./OptimizationPanel";
 import RecoverySuggestions from "./RecoverySuggestions";
 import SageMode from "./SageMode";
 import WeeklyHeatmap from "./WeeklyHeatmap";
-import TeamDashboard from "./TeamDashboard";
 import { useBudget } from "../hooks/useBudget";
 import { useEvents } from "../hooks/useEvents";
 import { useOptimize } from "../hooks/useOptimize";
@@ -18,6 +17,7 @@ const Dashboard = () => {
   const { suggestions, weeklyDebt, apply, applyAll, reload: reloadOptimize } = useOptimize();
   const [recovery, setRecovery] = useState([]);
   const [weeklyTotals, setWeeklyTotals] = useState({});
+  const [weekStart, setWeekStart] = useState(null);
 
   const loadRecovery = useCallback(async () => {
     const { data } = await getRecoverySuggestions();
@@ -27,6 +27,7 @@ const Dashboard = () => {
   const loadWeekly = useCallback(async () => {
     const { data } = await getWeeklyBudget();
     setWeeklyTotals(data?.daily_totals || {});
+    setWeekStart(data?.week_start || null);
   }, []);
 
   useEffect(() => {
@@ -94,8 +95,7 @@ const Dashboard = () => {
         <RecoverySuggestions activities={recovery} onSchedule={handleScheduleRecovery} />
       )}
 
-      <WeeklyHeatmap dailyTotals={weeklyTotals} />
-      <TeamDashboard />
+      <WeeklyHeatmap dailyTotals={weeklyTotals} weekStart={weekStart} />
 
       {(eventsLoading || budgetLoading) && (
         <div className="text-slate-400 text-sm">Loading data...</div>

@@ -12,7 +12,15 @@ const getHeatColor = (total) => {
   return "bg-debt/80";
 };
 
-const WeeklyHeatmap = ({ dailyTotals = {} }) => {
+const formatWeekLabel = (isoDate) => {
+  if (!isoDate) return null;
+  const d = new Date(isoDate + "T12:00:00");
+  const day = d.toLocaleDateString("en-US", { weekday: "short" });
+  const monthDay = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `Week of ${day}, ${monthDay}`;
+};
+
+const WeeklyHeatmap = ({ dailyTotals = {}, weekStart = null }) => {
   const days = Object.entries(dailyTotals).sort((a, b) => a[0].localeCompare(b[0]));
   const totalWeek = days.reduce((sum, [, val]) => sum + val, 0);
   const weeklyBudget = DAILY_BUDGET * 7;
@@ -29,15 +37,20 @@ const WeeklyHeatmap = ({ dailyTotals = {} }) => {
 
   return (
     <div className="card">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-lg font-semibold">Weekly Load Heatmap</div>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div>
+          <div className="text-lg font-semibold">Weekly Load Heatmap</div>
+          {weekStart && (
+            <div className="text-xs text-slate-400 mt-0.5">{formatWeekLabel(weekStart)}</div>
+          )}
+        </div>
         <div className={`text-sm font-semibold ${debt > 0 ? "text-debt" : "text-recovery"}`}>
           {debt > 0 ? `+${debt} debt` : `${Math.abs(debt)} surplus`}
         </div>
       </div>
       <div className="grid grid-cols-7 gap-2">
         {days.map(([day, total]) => {
-          const dayName = new Date(day).toLocaleDateString("en-US", { weekday: "short" });
+          const dayName = new Date(day + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" });
           return (
             <div 
               key={day} 

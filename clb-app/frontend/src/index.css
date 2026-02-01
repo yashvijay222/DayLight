@@ -9,3 +9,23 @@ body {
 .card {
   @apply rounded-2xl bg-slate-900/80 border border-slate-800 p-4 shadow-lg;
 }
+
+/* Week view: dark-themed scrollbar */
+.week-view-scroll {
+  scrollbar-color: rgb(71 85 105) rgb(30 41 59);
+  scrollbar-width: thin;
+}
+.week-view-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.week-view-scroll::-webkit-scrollbar-track {
+  background: rgb(30 41 59);
+  border-radius: 4px;
+}
+.week-view-scroll::-webkit-scrollbar-thumb {
+  background: rgb(71 85 105);
+  border-radius: 4px;
+}
+.week-view-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgb(100 116 139);
+}

@@ -6,8 +6,9 @@ from app.models import Event, TeamMetrics
 
 
 def _start_of_week(dt: datetime) -> datetime:
-    """Get Monday 9am of the current week."""
-    start = dt - timedelta(days=dt.weekday())
+    """Get Sunday 9am of the current week (Sun-Sat week for your 7-day view)."""
+    days_since_sunday = (dt.weekday() + 1) % 7
+    start = dt - timedelta(days=days_since_sunday)
     return start.replace(hour=9, minute=0, second=0, microsecond=0)
 
 
@@ -23,40 +24,41 @@ def generate_mock_week() -> List[Event]:
     events: List[Event] = []
 
     # Fixed 5 events: (title, duration_minutes, description, day_offset, start_hour)
+    # day_offset: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
     templates = [
         (
             "Weekly Team Standup",
             30,
             "Regular team sync to discuss blockers and progress",
-            0,  # Monday
+            1,  # Monday
             9,
         ),
         (
             "Deep Focus: Feature Development",
             120,
             "Uninterrupted coding time for the new dashboard feature",
-            0,  # Monday
+            1,  # Monday
             14,
         ),
         (
             "Client Strategy Call",
             60,
             "Quarterly review call with the client stakeholders",
-            1,  # Tuesday
+            2,  # Tuesday
             10,
         ),
         (
             "Lunch Walk",
             30,
             "Quick walk around the block to recharge",
-            2,  # Wednesday
+            3,  # Wednesday
             12,
         ),
         (
             "Sprint Planning",
             90,
             "Planning session for the upcoming two-week sprint",
-            3,  # Thursday
+            4,  # Thursday
             9,
         ),
     ]
