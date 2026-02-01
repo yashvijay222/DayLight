@@ -147,6 +147,7 @@ class SageSession(BaseModel):
     estimated_cost: int
     actual_cost: Optional[int] = None
     debt_adjustment: Optional[int] = None
+    hourly_projection: Optional[int] = None
 
 
 class TeamMetrics(BaseModel):

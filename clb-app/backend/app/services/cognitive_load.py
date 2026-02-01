@@ -535,15 +535,15 @@ def aggregate_session_delta(
     if method == "mean":
         return round(sum(deltas) / len(deltas))
     elif method == "median":
-        return round(median(deltas))
+        return round(float(median(deltas)))
     elif method == "p90":
         # 90th percentile - captures sustained high stress
         sorted_deltas = sorted(deltas)
         idx = int(len(sorted_deltas) * 0.9)
-        return sorted_deltas[min(idx, len(sorted_deltas) - 1)]
+        return round(float(sorted_deltas[min(idx, len(sorted_deltas) - 1)]))
     else:
         # Default to median
-        return round(median(deltas))
+        return round(float(median(deltas)))
 
 
 def aggregate_session_metrics(
