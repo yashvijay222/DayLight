@@ -4,18 +4,12 @@ import { getCostBreakdown } from "../services/api";
 const CostBreakdownModal = ({ event, onClose }) => {
   const [breakdown, setBreakdown] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      setError(null);
-      const { data, error: apiError } = await getCostBreakdown(event.id);
-      if (apiError) {
-        setError(apiError?.detail || "Event not found. It may have been deleted or the server was restarted.");
-      } else {
-        setBreakdown(data);
-      }
+      const { data } = await getCostBreakdown(event.id);
+      setBreakdown(data);
       setLoading(false);
     };
     load();
@@ -44,17 +38,12 @@ const CostBreakdownModal = ({ event, onClose }) => {
         </div>
         
         <div className="text-xs text-slate-400 mb-4">
-          {new Date(event.start_time).toLocaleString("en-US", { timeZone: "America/New_York" })} EST • {event.duration_minutes} min
+          {new Date(event.start_time).toLocaleString()} • {event.duration_minutes} min
           {event.event_type && <span className="ml-2 px-2 py-0.5 bg-slate-800 rounded">{event.event_type}</span>}
         </div>
 
         {loading ? (
           <div className="text-slate-400 text-center py-4">Loading breakdown...</div>
-        ) : error ? (
-          <div className="text-center py-4">
-            <div className="text-debt mb-2">Unable to load breakdown</div>
-            <div className="text-slate-500 text-xs">{error}</div>
-          </div>
         ) : breakdown ? (
           <div className="space-y-2">
             <div className="text-sm font-semibold text-slate-300 mb-3">Cost Breakdown</div>
@@ -71,6 +60,13 @@ const CostBreakdownModal = ({ event, onClose }) => {
                 <div className="flex justify-between">
                   <span className="text-slate-400">Recovery benefit</span>
                   <span className="text-recovery">{formatValue(breakdown.base)}</span>
+                </div>
+              )}
+              
+              {breakdown.tool_switch !== 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Tool switching</span>
+                  <span className="text-warning">{formatValue(breakdown.tool_switch)}</span>
                 </div>
               )}
               

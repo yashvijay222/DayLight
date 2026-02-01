@@ -25,13 +25,11 @@ class Event(BaseModel):
     # Meeting-specific fields - Optional for incomplete events (user will enrich)
     participants: Optional[int] = None
     has_agenda: Optional[bool] = None
+    requires_tool_switch: Optional[bool] = None
     event_type: Optional[str] = None  # Set by classifier
     calculated_cost: Optional[float] = None
     actual_cost: Optional[float] = None
     is_flexible: Optional[bool] = None  # True = movable, False = unmovable
-    is_completed: bool = False  # True when event is done (auto or manual)
-    completed_at: Optional[datetime] = None  # When event was marked complete
-    prorated_cost: Optional[int] = None  # Actual cost based on time spent
 
 
 class EventCreate(BaseModel):
@@ -42,26 +40,15 @@ class EventCreate(BaseModel):
     duration_minutes: int
     participants: Optional[int] = None
     has_agenda: Optional[bool] = None
+    requires_tool_switch: Optional[bool] = None
     event_type: Optional[str] = None
-
-
-class EventUpdate(BaseModel):
-    """Payload for updating event details."""
-    title: Optional[str] = None
-    description: Optional[str] = None
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    duration_minutes: Optional[int] = None
-    participants: Optional[int] = None
-    has_agenda: Optional[bool] = None
-    event_type: Optional[str] = None
-    is_completed: Optional[bool] = None
 
 
 class EventEnrich(BaseModel):
     """Payload for enriching meeting-specific fields."""
     participants: Optional[int] = None
     has_agenda: Optional[bool] = None
+    requires_tool_switch: Optional[bool] = None
 
 
 class FlexibilityClassification(BaseModel):
@@ -76,6 +63,7 @@ class CostBreakdown(BaseModel):
     event_type: Optional[str] = None
     base: int = 0
     duration_component: int = 0
+    tool_switch: int = 0
     participants: int = 0
     no_agenda: int = 0
     afternoon_discount: int = 0

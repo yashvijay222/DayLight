@@ -68,6 +68,7 @@ def schedule_recovery(request: Request, payload: dict) -> dict:
             "duration_minutes": activity.get("duration_minutes", 30),
             "participants": 1,
             "has_agenda": True,
+            "requires_tool_switch": False,
             "event_type": "recovery",
         }
     else:
@@ -82,6 +83,7 @@ def schedule_recovery(request: Request, payload: dict) -> dict:
         duration_minutes=data.duration_minutes,
         participants=data.participants if data.participants is not None else 1,
         has_agenda=data.has_agenda if data.has_agenda is not None else True,
+        requires_tool_switch=data.requires_tool_switch if data.requires_tool_switch is not None else False,
         event_type=data.event_type if data.event_type else "recovery",
     )
     request.app.state.events.append(event)

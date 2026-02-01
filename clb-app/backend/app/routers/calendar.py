@@ -35,6 +35,8 @@ def _classify_and_prepare_events(events_list: List[Event]) -> List[Event]:
                     event.participants = 1
                 if event.has_agenda is None:
                     event.has_agenda = True
+                if event.requires_tool_switch is None:
+                    event.requires_tool_switch = False
     
     # Calculate costs with proximity awareness
     calculate_events_with_proximity(events_list)
@@ -72,6 +74,7 @@ def sync_calendar(request: Request) -> List[Event]:
     for event in events:
         event.participants = None
         event.has_agenda = None
+        event.requires_tool_switch = None
         event.event_type = None
         event.is_flexible = None
     

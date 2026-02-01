@@ -13,6 +13,7 @@ const RecoverySuggestions = ({ activities = [], onSchedule }) => {
       duration_minutes: activity.duration_minutes,
       participants: 1,
       has_agenda: true,
+      requires_tool_switch: false,
       event_type: "recovery"
     });
     setScheduling(null);

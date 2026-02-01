@@ -6,16 +6,6 @@
 Thumbs.db
 ehthumbs.db
 Desktop.ini
-._*
-
-# Environment and secrets
-.env
-.env.local
-.env.*
-!.env.example
-*.pem
-*.key
-clb-app/backend/.env
 
 # Python
 __pycache__/
@@ -36,24 +26,10 @@ pip-wheel-metadata/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
-.tox/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-.installed.cfg
 
 # Node / Frontend
 node_modules/
 dist/
-dist-ssr/
 build/
 .cache/
 .vite/
@@ -66,7 +42,13 @@ pnpm-debug.log*
 .yarn-integrity
 .eslintcache
 *.tsbuildinfo
-.pnpm-store/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
 
 # IDE / Editor
 .idea/
@@ -74,18 +56,10 @@ pnpm-debug.log*
 *.swp
 *.swo
 *~
-.project
-.classpath
-.settings/
 
 # Logs
 *.log
 logs/
-*.tmp
-*.temp
-.temp/
-tmp/
-temp/
 
 # Build / C++ (SmartSpectra)
 *.o
@@ -99,6 +73,8 @@ smartspectra_output/
 
 # Misc
 coverage/
+tmp/
+temp/
 *.bak
 *.tmp
 .cache/

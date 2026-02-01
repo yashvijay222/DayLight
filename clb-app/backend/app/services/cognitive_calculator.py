@@ -42,8 +42,11 @@ def calculate_event_base_cost(event: Event) -> float:
     # Use defaults if fields are None (for incomplete events)
     participants = event.participants if event.participants is not None else 1
     has_agenda = event.has_agenda if event.has_agenda is not None else True
+    requires_tool_switch = event.requires_tool_switch if event.requires_tool_switch is not None else False
     
     cost = (event.duration_minutes / 15) * BASE_COST_PER_15MIN
+    if requires_tool_switch:
+        cost += 3
     cost += participants * 0.5
     if not has_agenda:
         cost += 4
@@ -72,6 +75,7 @@ def calculate_cost_breakdown(event: Event, previous_event_end: Optional[datetime
         "event_type": event.event_type,
         "base": 0,
         "duration_component": 0,
+        "tool_switch": 0,
         "participants": 0,
         "no_agenda": 0,
         "afternoon_discount": 0,
@@ -108,11 +112,16 @@ def calculate_cost_breakdown(event: Event, previous_event_end: Optional[datetime
     # Regular events (meeting, admin)
     participants = event.participants if event.participants is not None else 1
     has_agenda = event.has_agenda if event.has_agenda is not None else True
+    requires_tool_switch = event.requires_tool_switch if event.requires_tool_switch is not None else False
     
     duration_cost = (event.duration_minutes / 15) * BASE_COST_PER_15MIN
     breakdown["duration_component"] = round(duration_cost)
     
     running_total = duration_cost
+    
+    if requires_tool_switch:
+        breakdown["tool_switch"] = 3
+        running_total += 3
     
     participant_cost = participants * 0.5
     breakdown["participants"] = round(participant_cost)

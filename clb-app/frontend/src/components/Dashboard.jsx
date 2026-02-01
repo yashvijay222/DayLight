@@ -6,6 +6,7 @@ import OptimizationPanel from "./OptimizationPanel";
 import RecoverySuggestions from "./RecoverySuggestions";
 import SageMode from "./SageMode";
 import WeeklyHeatmap from "./WeeklyHeatmap";
+import TeamDashboard from "./TeamDashboard";
 import { useBudget } from "../hooks/useBudget";
 import { useEvents } from "../hooks/useEvents";
 import { useOptimize } from "../hooks/useOptimize";
@@ -17,7 +18,6 @@ const Dashboard = () => {
   const { suggestions, weeklyDebt, apply, applyAll, reload: reloadOptimize } = useOptimize();
   const [recovery, setRecovery] = useState([]);
   const [weeklyTotals, setWeeklyTotals] = useState({});
-  const [weekStart, setWeekStart] = useState(null);
 
   const loadRecovery = useCallback(async () => {
     const { data } = await getRecoverySuggestions();
@@ -27,7 +27,6 @@ const Dashboard = () => {
   const loadWeekly = useCallback(async () => {
     const { data } = await getWeeklyBudget();
     setWeeklyTotals(data?.daily_totals || {});
-    setWeekStart(data?.week_start || null);
   }, []);
 
   useEffect(() => {
@@ -68,12 +67,6 @@ const Dashboard = () => {
     await loadWeekly();
   };
 
-  const handleEventsChange = async () => {
-    await reloadEvents();
-    await reloadBudget();
-    await loadWeekly();
-  };
-
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -86,7 +79,7 @@ const Dashboard = () => {
         <SageMode events={events} onSessionEnd={handleSessionEnd} />
       </div>
 
-      <CalendarWeekView events={events} onEventsChange={handleEventsChange} />
+      <CalendarWeekView events={events} />
 
       {weeklyDebt > 0 && (
         <OptimizationPanel
@@ -101,7 +94,8 @@ const Dashboard = () => {
         <RecoverySuggestions activities={recovery} onSchedule={handleScheduleRecovery} />
       )}
 
-      <WeeklyHeatmap dailyTotals={weeklyTotals} weekStart={weekStart} />
+      <WeeklyHeatmap dailyTotals={weeklyTotals} />
+      <TeamDashboard />
 
       {(eventsLoading || budgetLoading) && (
         <div className="text-slate-400 text-sm">Loading data...</div>

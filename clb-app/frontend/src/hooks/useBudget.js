@@ -20,8 +20,6 @@ export const useBudget = () => {
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 60 * 1000);
-    return () => clearInterval(interval);
   }, []);
 
   return { budget, loading, error, reload: load };
