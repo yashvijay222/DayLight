@@ -519,8 +519,8 @@ def end_sage(request: Request, payload: dict) -> dict:
     session.actual_cost = session.estimated_cost + avg_delta
     session.debt_adjustment = session.actual_cost - session.estimated_cost
     
-    # Calculate hourly projection (4.0 is base points for 60 min regular session)
-    session.hourly_projection = 4.0 + avg_delta
+    # Calculate hourly projection (4 is base points for 60 min regular session)
+    session.hourly_projection = 4 + avg_delta
     
     if session.event_id:
         for event in request.app.state.events:
