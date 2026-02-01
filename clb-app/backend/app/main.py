@@ -56,8 +56,6 @@ def _classify_and_prepare_events(events_list):
                     event.participants = 1
                 if event.has_agenda is None:
                     event.has_agenda = True
-                if event.requires_tool_switch is None:
-                    event.requires_tool_switch = False
     
     # Calculate costs with proximity awareness
     calculate_events_with_proximity(events_list)

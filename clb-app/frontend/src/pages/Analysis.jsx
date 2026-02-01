@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
 import FlexibilityWizard from "../components/FlexibilityWizard";
@@ -10,7 +10,8 @@ import {
   getRecoverySuggestions, 
   scheduleRecovery, 
   getWeekOptimization, 
-  applyWeekOptimization 
+  applyWeekOptimization,
+  enrichEvent 
 } from "../services/api";
 
 const Analysis = () => {
@@ -20,12 +21,15 @@ const Analysis = () => {
   const [weekProposal, setWeekProposal] = useState(null);
   const [loadingOptimize, setLoadingOptimize] = useState(false);
   const [applyingOptimize, setApplyingOptimize] = useState(false);
+  const [selectedChanges, setSelectedChanges] = useState({}); // Track which changes are selected
   const navigate = useNavigate();
 
   // Check if all events have flexibility set
   const allClassified = events.length > 0 && events.every(e => e.is_flexible !== null);
   
-  // Check if any meetings need enrichment
+  const autoEnrichedRef = useRef(new Set());
+
+  // Check if any meetings need enrichment (auto-filled with defaults)
   const needsEnrichment = events.some(e => 
     (e.event_type === "meeting" || e.event_type === "admin") && 
     (e.participants === null || e.has_agenda === null || e.requires_tool_switch === null)
@@ -40,15 +44,54 @@ const Analysis = () => {
     loadRecovery();
   }, [loadRecovery]);
 
+  useEffect(() => {
+    const enrichDefaults = async () => {
+      const targets = events.filter(
+        (e) =>
+          (e.event_type === "meeting" || e.event_type === "admin") &&
+          (e.participants === null || e.has_agenda === null || e.requires_tool_switch === null) &&
+          !autoEnrichedRef.current.has(e.id)
+      );
+      if (targets.length === 0) return;
+      for (const event of targets) {
+        autoEnrichedRef.current.add(event.id);
+        await enrichEvent(event.id, {
+          participants: event.participants ?? 2,
+          has_agenda: event.has_agenda ?? true,
+          requires_tool_switch: event.requires_tool_switch ?? false,
+        });
+      }
+      await reloadEvents();
+      await reloadOptimize();
+      setWeekProposal(null);
+    };
+    enrichDefaults();
+  }, [events, reloadEvents, reloadOptimize]);
+
   const handleClassify = async (eventId, payload) => {
     await setFlexibility(eventId, payload);
+    const event = events.find((e) => e.id === eventId);
+    if (
+      event &&
+      (event.event_type === "meeting" || event.event_type === "admin") &&
+      (event.participants === null || event.has_agenda === null || event.requires_tool_switch === null)
+    ) {
+      await enrichEvent(eventId, {
+        participants: event.participants ?? 2,
+        has_agenda: event.has_agenda ?? true,
+        requires_tool_switch: event.requires_tool_switch ?? false,
+      });
+    }
+    await reloadEvents();
     await reloadOptimize();
     setWeekProposal(null); // Clear proposal when flexibility changes
   };
 
-  const handleEnrich = async () => {
+  const handleEnrich = async (eventId, payload) => {
+    await enrichEvent(eventId, payload);
     await reloadEvents();
     await reloadOptimize();
+    setWeekProposal(null); // Clear proposal when enrichment changes
   };
 
   const handleApply = async (id) => {
@@ -77,17 +120,59 @@ const Analysis = () => {
   const handleOptimizeWeek = async () => {
     setLoadingOptimize(true);
     const { data } = await getWeekOptimization();
-    setWeekProposal(data?.proposal || null);
+    const proposal = data?.proposal || null;
+    setWeekProposal(proposal);
+    // Select all changes by default
+    if (proposal?.changes) {
+      const initialSelection = {};
+      proposal.changes.forEach(change => {
+        initialSelection[change.event_id] = true;
+      });
+      setSelectedChanges(initialSelection);
+    } else {
+      setSelectedChanges({});
+    }
     setLoadingOptimize(false);
   };
 
+  const handleToggleChange = (eventId) => {
+    setSelectedChanges(prev => ({
+      ...prev,
+      [eventId]: !prev[eventId]
+    }));
+  };
+
+  const handleSelectAll = () => {
+    if (weekProposal?.changes) {
+      const allSelected = {};
+      weekProposal.changes.forEach(change => {
+        allSelected[change.event_id] = true;
+      });
+      setSelectedChanges(allSelected);
+    }
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedChanges({});
+  };
+
+  const getSelectedEventIds = () => {
+    return Object.entries(selectedChanges)
+      .filter(([_, isSelected]) => isSelected)
+      .map(([eventId]) => eventId);
+  };
+
   const handleApplyWeekOptimization = async () => {
+    const selectedIds = getSelectedEventIds();
+    if (selectedIds.length === 0) return;
+    
     setApplyingOptimize(true);
-    await applyWeekOptimization();
+    await applyWeekOptimization(selectedIds);
     await reloadEvents();
     await reloadOptimize();
     await loadRecovery();
     setWeekProposal(null);
+    setSelectedChanges({});
     setApplyingOptimize(false);
   };
 
@@ -142,34 +227,80 @@ const Analysis = () => {
           {weekProposal && weekProposal.changes && weekProposal.changes.length > 0 && (
             <div className="mt-4 pt-4 border-t border-slate-800">
               <div className="flex items-center justify-between mb-3">
-                <div className="text-sm font-semibold">Proposed Changes</div>
-                <div className="text-xs text-slate-400">
-                  Max daily: {weekProposal.current_max_daily_debt} → {weekProposal.proposed_max_daily_debt}
+                <div>
+                  <div className="text-sm font-semibold">Proposed Changes</div>
+                  <p className="text-xs text-slate-500">Select the changes you want to apply</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-xs text-slate-400">
+                    Max daily: {weekProposal.current_max_daily_debt} → {weekProposal.proposed_max_daily_debt}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSelectAll}
+                      className="text-xs text-neutral hover:text-blue-400 transition"
+                    >
+                      Select All
+                    </button>
+                    <span className="text-slate-600">|</span>
+                    <button
+                      onClick={handleDeselectAll}
+                      className="text-xs text-slate-400 hover:text-slate-300 transition"
+                    >
+                      Deselect All
+                    </button>
+                  </div>
                 </div>
               </div>
               
               <div className="space-y-2 mb-4">
-                {weekProposal.changes.map((change, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-sm bg-slate-800/50 rounded-lg p-2">
-                    <span className="text-slate-300">{change.event_title || "Event"}</span>
-                    <span className="text-xs text-slate-400">
-                      {new Date(change.original_time).toLocaleDateString("en-US", { weekday: "short" })} 
-                      {" → "}
-                      {new Date(change.new_time).toLocaleDateString("en-US", { weekday: "short" })}
-                      {" "}
-                      {new Date(change.new_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </div>
-                ))}
+                {weekProposal.changes.map((change, idx) => {
+                  const isSelected = selectedChanges[change.event_id] || false;
+                  return (
+                    <div 
+                      key={idx} 
+                      className={`flex items-center gap-3 text-sm rounded-lg p-3 cursor-pointer transition ${
+                        isSelected 
+                          ? "bg-recovery/10 border border-recovery/30" 
+                          : "bg-slate-800/50 border border-transparent hover:bg-slate-800"
+                      }`}
+                      onClick={() => handleToggleChange(change.event_id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleToggleChange(change.event_id)}
+                        className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-recovery focus:ring-recovery focus:ring-offset-0 cursor-pointer"
+                      />
+                      <div className="flex-1 flex items-center justify-between">
+                        <span className={isSelected ? "text-slate-200" : "text-slate-400"}>
+                          {change.event_title || "Event"}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          {new Date(change.original_time).toLocaleDateString("en-US", { weekday: "short" })} 
+                          {" → "}
+                          {new Date(change.new_time).toLocaleDateString("en-US", { weekday: "short" })}
+                          {" "}
+                          {new Date(change.new_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
               
-              <button
-                onClick={handleApplyWeekOptimization}
-                disabled={applyingOptimize}
-                className="w-full px-4 py-2 rounded-xl bg-recovery text-slate-900 hover:bg-green-400 transition disabled:opacity-50"
-              >
-                {applyingOptimize ? "Applying..." : "Apply Optimization"}
-              </button>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400">
+                  {getSelectedEventIds().length} of {weekProposal.changes.length} changes selected
+                </span>
+                <button
+                  onClick={handleApplyWeekOptimization}
+                  disabled={applyingOptimize || getSelectedEventIds().length === 0}
+                  className="px-6 py-2 rounded-xl bg-recovery text-slate-900 hover:bg-green-400 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {applyingOptimize ? "Applying..." : `Apply ${getSelectedEventIds().length} Selected`}
+                </button>
+              </div>
             </div>
           )}
           
