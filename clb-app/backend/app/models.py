@@ -11,6 +11,7 @@ class TimeSlot(BaseModel):
     end_time: datetime
     day: str
     available: bool = True
+    priority: Optional[str] = "normal"  # "high" for overloaded days, "normal" otherwise
 
 
 class Event(BaseModel):
