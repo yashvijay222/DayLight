@@ -36,6 +36,10 @@ from app.services.user_baseline import (
     learn_from_session,
     get_baseline_summary,
 )
+from app.services.metrics_buffer import (
+    get_session_buffer,
+    remove_session_buffer,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

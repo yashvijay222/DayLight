@@ -15,17 +15,19 @@ const WS_BASE = "ws://localhost:8000/api";
 const METRICS_RECONNECT_DELAY_MS = 2000;
 const METRICS_MAX_RECONNECT_ATTEMPTS = 5;
 
-// Simulated data generator for fallback when daemon is unavailable
-const generateSimulatedReading = () => ({
-  hrv: Math.floor(40 + Math.random() * 40),
-  breathing_rate: Math.floor(12 + Math.random() * 8),
-  focus_score: Math.floor(60 + Math.random() * 35),
-  stress_level: Math.floor(20 + Math.random() * 60),
-  cognitive_cost_delta: Math.floor(-5 + Math.random() * 15),
-  pulse_rate: Math.floor(60 + Math.random() * 30),
-  confidence: 0,  // 0 indicates simulated data
-  simulated: true,
-});
+// Calibrating state shown when waiting for real metrics from the SDK
+// Uses null values instead of random numbers to clearly indicate no data yet
+const CALIBRATING_READING = {
+  hrv: null,
+  breathing_rate: null,
+  focus_score: null,
+  stress_level: null,
+  cognitive_cost_delta: null,
+  pulse_rate: null,
+  confidence: 0,
+  calibrating: true,
+  message: 'Acquiring vital signs...',
+};
 
 const SageMode = ({ events = [], onSessionEnd }) => {
   const { active, start, stop } = usePresage();
@@ -75,12 +77,13 @@ const SageMode = ({ events = [], onSessionEnd }) => {
         setVideoWsConnected(true);
         
         // Send session_start message
+        // Note: Higher resolution (640x480) and fps (20) are required for reliable PPG detection
         const startMsg = {
           type: "session_start",
           session_id: sessionId,
-          fps: 15,
-          width: 320,
-          height: 240,
+          fps: 20,
+          width: 640,
+          height: 480,
         };
         console.log("[Sage] Sending session_start:", startMsg);
         videoWsRef.current.send(JSON.stringify(startMsg));
@@ -144,23 +147,19 @@ const SageMode = ({ events = [], onSessionEnd }) => {
   // Simulated Data Fallback
   // =========================================================================
 
-  const startSimulatedMetrics = useCallback(() => {
+  const startCalibratingState = useCallback(() => {
     if (simulationIntervalRef.current) return; // Already running
     
-    console.log("[Sage] Starting simulated metrics (daemon unavailable)");
+    console.log("[Sage] Starting calibrating state (waiting for SDK metrics)");
     setUsingSimulatedData(true);
+    setReading(CALIBRATING_READING);
     
-    // Generate simulated readings at ~1Hz
-    simulationIntervalRef.current = setInterval(() => {
-      setReading(generateSimulatedReading());
-    }, 1000);
+    // No interval needed - we just show the calibrating state
+    // Real metrics will replace this when they arrive from the SDK
   }, []);
 
-  const stopSimulatedMetrics = useCallback(() => {
-    if (simulationIntervalRef.current) {
-      clearInterval(simulationIntervalRef.current);
-      simulationIntervalRef.current = null;
-    }
+  const stopCalibratingState = useCallback(() => {
+    // Just clear the simulated flag, reading will be replaced by real data
     setUsingSimulatedData(false);
   }, []);
 
@@ -186,8 +185,8 @@ const SageMode = ({ events = [], onSessionEnd }) => {
         setMetricsWsConnected(true);
         metricsReconnectAttempts.current = 0; // Reset on successful connection
         
-        // Stop simulated data if we were using it
-        stopSimulatedMetrics();
+        // Stop calibrating state if we were using it
+        stopCalibratingState();
       };
 
       metricsWsRef.current.onmessage = (event) => {
@@ -209,9 +208,9 @@ const SageMode = ({ events = [], onSessionEnd }) => {
               segment_index: message.segment_index,
             });
             
-            // If we were using simulated data, stop it now that we have real metrics
+            // If we were in calibrating state, stop it now that we have real metrics
             if (usingSimulatedData) {
-              stopSimulatedMetrics();
+              stopCalibratingState();
             }
           } else if (message.type === "sdk_status") {
             console.log("[Sage] SDK status:", message.status, message.session_id || "", message.segment_index ?? "");
@@ -244,9 +243,9 @@ const SageMode = ({ events = [], onSessionEnd }) => {
             }
           }, METRICS_RECONNECT_DELAY_MS);
         } else if (cameraActiveRef.current) {
-          // Max reconnect attempts reached, fall back to simulated data
-          console.log("[Sage] Max reconnect attempts reached, falling back to simulated data");
-          startSimulatedMetrics();
+          // Max reconnect attempts reached, show calibrating state
+          console.log("[Sage] Max reconnect attempts reached, showing calibrating state");
+          startCalibratingState();
         }
       };
 
@@ -266,10 +265,10 @@ const SageMode = ({ events = [], onSessionEnd }) => {
           }
         }, METRICS_RECONNECT_DELAY_MS);
       } else if (cameraActiveRef.current) {
-        startSimulatedMetrics();
+        startCalibratingState();
       }
     }
-  }, [stopSimulatedMetrics, startSimulatedMetrics]);
+  }, [stopCalibratingState, startCalibratingState]);
 
   const disconnectMetricsWebSocket = useCallback(() => {
     // Clear reconnect timer
@@ -288,9 +287,9 @@ const SageMode = ({ events = [], onSessionEnd }) => {
     }
     setMetricsWsConnected(false);
     
-    // Stop simulated data
-    stopSimulatedMetrics();
-  }, [stopSimulatedMetrics]);
+    // Stop calibrating state
+    stopCalibratingState();
+  }, [stopCalibratingState]);
 
   // =========================================================================
   // Camera capture
@@ -372,9 +371,9 @@ const SageMode = ({ events = [], onSessionEnd }) => {
   // Start camera and connect WebSockets
   const startCamera = useCallback(async (sessionId) => {
     try {
-      // Get camera stream
+      // Get camera stream - higher resolution required for reliable PPG detection
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: "user" },
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
         audio: false,
       });
 
@@ -386,6 +385,10 @@ const SageMode = ({ events = [], onSessionEnd }) => {
       // Connect WebSockets
       connectVideoWebSocket(sessionId);
       connectMetricsWebSocket();
+      
+      // Show calibrating state while waiting for first metrics
+      setReading(CALIBRATING_READING);
+      setUsingSimulatedData(true);
 
       // Wait for WebSocket connections
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -395,10 +398,10 @@ const SageMode = ({ events = [], onSessionEnd }) => {
       setCameraError(null);
       setFrameCount(0);
 
-      // Capture frames at 15 FPS
+      // Capture frames at 20 FPS to match session settings
       frameIntervalRef.current = setInterval(() => {
         captureFrame();
-      }, 1000 / 15);
+      }, 1000 / 20);
 
       return true;
     } catch (err) {
@@ -417,8 +420,8 @@ const SageMode = ({ events = [], onSessionEnd }) => {
       frameIntervalRef.current = null;
     }
 
-    // Stop simulated metrics if running
-    stopSimulatedMetrics();
+    // Stop calibrating state if running
+    stopCalibratingState();
 
     // Disconnect WebSockets
     disconnectVideoWebSocket(sendSessionEnd);
@@ -437,7 +440,7 @@ const SageMode = ({ events = [], onSessionEnd }) => {
     cameraActiveRef.current = false;
     setCameraActive(false);
     setReading(null);
-  }, [disconnectVideoWebSocket, disconnectMetricsWebSocket, stopSimulatedMetrics]);
+  }, [disconnectVideoWebSocket, disconnectMetricsWebSocket, stopCalibratingState]);
 
   // =========================================================================
   // Session handlers
@@ -603,28 +606,44 @@ const SageMode = ({ events = [], onSessionEnd }) => {
 
       {reading && (
         <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+          {/* Show calibrating message if in calibrating state */}
+          {reading.calibrating && (
+            <div className="col-span-2 flex items-center justify-center gap-2 py-4 text-blue-400">
+              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+              <span className="text-sm">{reading.message || 'Acquiring vital signs...'}</span>
+            </div>
+          )}
+          
           <div className="bg-slate-950/40 rounded-lg p-2">
             <div className="text-slate-400 text-xs">HRV</div>
-            <div className="text-xl font-semibold">{reading.hrv}</div>
+            <div className={`text-xl font-semibold ${reading.calibrating ? 'text-slate-500 animate-pulse' : ''}`}>
+              {reading.hrv !== null ? reading.hrv : '—'}
+            </div>
           </div>
           <div className="bg-slate-950/40 rounded-lg p-2">
             <div className="text-slate-400 text-xs">Breathing</div>
-            <div className="text-xl font-semibold">{Number(reading.breathing_rate).toFixed(2)}/min</div>
+            <div className={`text-xl font-semibold ${reading.calibrating ? 'text-slate-500 animate-pulse' : ''}`}>
+              {reading.breathing_rate !== null ? `${Number(reading.breathing_rate).toFixed(1)}/min` : '—'}
+            </div>
           </div>
           <div className="bg-slate-950/40 rounded-lg p-2">
             <div className="text-slate-400 text-xs">Focus</div>
-            <div className="text-xl font-semibold">{reading.focus_score}%</div>
+            <div className={`text-xl font-semibold ${reading.calibrating ? 'text-slate-500 animate-pulse' : ''}`}>
+              {reading.focus_score !== null ? `${reading.focus_score}%` : '—'}
+            </div>
           </div>
           <div className="bg-slate-950/40 rounded-lg p-2">
             <div className="text-slate-400 text-xs">Stress</div>
-            <div className={`text-xl font-semibold ${getStressColor(reading.stress_level)}`}>
-              {reading.stress_level}
+            <div className={`text-xl font-semibold ${reading.calibrating ? 'text-slate-500 animate-pulse' : getStressColor(reading.stress_level)}`}>
+              {reading.stress_level !== null ? reading.stress_level : '—'}
             </div>
           </div>
           <div className="bg-slate-950/40 rounded-lg p-2 col-span-2">
             <div className="text-slate-400 text-xs">Cognitive Cost Ticker</div>
-            <div className={`text-xl font-semibold ${reading.cognitive_cost_delta > 0 ? "text-debt" : "text-recovery"}`}>
-              {reading.cognitive_cost_delta > 0 ? "+" : ""}{reading.cognitive_cost_delta} pts
+            <div className={`text-xl font-semibold ${reading.calibrating ? 'text-slate-500 animate-pulse' : reading.cognitive_cost_delta > 0 ? "text-debt" : "text-recovery"}`}>
+              {reading.cognitive_cost_delta !== null ? (
+                <>{reading.cognitive_cost_delta > 0 ? "+" : ""}{reading.cognitive_cost_delta} pts</>
+              ) : '—'}
             </div>
           </div>
         </div>

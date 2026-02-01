@@ -71,7 +71,8 @@ struct DaemonConfig {
     // Session recording configuration
     std::string recordings_dir = "/tmp/presage_recordings";
     int video_fps = 30;
-    int segment_duration_seconds = 5;  // Duration of each video segment for real-time processing
+    int segment_duration_seconds = 3;  // Duration of each video segment for real-time processing (reduced from 5s for lower latency)
+    int min_segment_frames = 60;  // Minimum frames required for SDK to produce valid metrics
 };
 
 void signal_handler(int signal) {
@@ -797,7 +798,7 @@ private:
             settings.headless = true;  // No GUI
             settings.enable_edge_metrics = true;
             settings.verbosity_level = 0;  // Reduce logging for segments
-            settings.continuous.preprocessed_data_buffer_duration_s = 0.5;
+            settings.continuous.preprocessed_data_buffer_duration_s = 0.25;  // Reduced for faster initial metrics
             settings.integration.api_key = api_key_;
             
             // Create SDK container
